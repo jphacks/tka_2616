@@ -1,0 +1,10 @@
+[project]
+name = "awamon-backend"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["fastapi>=0.115", "uvicorn>=0.34", "python-multipart>=0.0.20", "pillow>=11", "httpx>=0.28", "python-dotenv>=1"]
+[dependency-groups]
+dev = ["pytest>=8"]
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

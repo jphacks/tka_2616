@@ -1,0 +1,13 @@
+node_modules/
+.next/
+.venv/
+__pycache__/
+.pytest_cache/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+backend/data/
+.aws/
+.codex/
+art/exports/frames.json

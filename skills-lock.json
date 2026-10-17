@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "pixel-anims": {
+      "source": "dris1153/pixel-anims",
+      "sourceType": "github",
+      "skillPath": "skills/pixel-anims/SKILL.md",
+      "computedHash": "cb5fcdce432aeb0e0155e4c6b3086ea1e1952fd8a8814e90b0161cf9374ff57f"
+    }
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "size": [
+    64,
+    64
+  ],
+  "frames": 20,
+  "frame_ms": 200,
+  "anchor": [
+    32,
+    48
+  ],
+  "states": [
+    "idle",
+    "happy",
+    "wave",
+    "sleep",
+    "grow"
+  ],
+  "levels": 5,
+  "palette": [
+    "#46576e",
+    "#f5efdf",
+    "#e0edf1",
+    "#c9dfed",
+    "#b0cbde",
+    "#b3bf9d",
+    "#cdd4af",
+    "#e3dfbd",
+    "#82997f",
+    "#92b9d1",
+    "#abd3e5",
+    "#cce9ed",
+    "#eef5e8",
+    "#668baa",
+    "#8bb9d8",
+    "#b7dbed",
+    "#e1f1ed",
+    "#e5aaa9",
+    "#bd7d88",
+    "#dbc291",
+    "#f3dfab",
+    "#faf1d4",
+    "#6f8d72",
+    "#94ad86",
+    "#d7b3bf",
+    "#f0d3cd",
+    "#8895ad",
+    "#65778f"
+  ]
+}

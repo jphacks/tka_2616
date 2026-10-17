@@ -1,0 +1,5 @@
+import Link from 'next/link';
+const candidates = [ ['a', 'しずく型', 'ぽとん、と生まれた水の子。'], ['b', 'ぷにぷに泡型', '小さな泡の冠がチャームポイント。'], ['c', '水まんじゅう型', 'のんびり、ぷるんとひと休み。'], ['d', '小さな水精霊型', '葉っぱをつけた、池の案内役。'] ];
+export default function Design() {
+ return <main className="design-page"><Link href="/">← 池にもどる</Link><p className="eyebrow">AWAMON · CHARACTER STUDIES</p><h1>あわもん、どの子にする？</h1><p>64×64ピクセルの4つの候補。まだ正式採用はしていません。</p><div className="design-grid">{candidates.map(([id,title,note])=><article key={id}><small>STUDY {id.toUpperCase()}</small><img width="256" height="256" src={`/assets/candidates/${id}.png`} alt={title}/><h2>{title}</h2><p>{note}</p><div className="design-small"><img width="48" height="48" src={`/assets/candidates/${id}.png`} alt={`${title}の48px表示`}/><span>48px表示</span></div></article>)}</div><h2>同じ条件で、見比べる。</h2><p>上から、正面・48px表示・シルエット・顔アップ。可愛さ、愛着、育てたい気持ち、小さくても見分けられるかを確認します。</p><img className="comparison" width="1024" height="700" src="/assets/candidates/comparison.png" alt="4案の正面、縮小表示、単色シルエット、顔アップの比較"/><p>アプリ本体では既存の技術検証用キャラを使用しています。採用案の決定後、輪郭・顔・配色を固定してアニメーションを制作します。</p></main>;
+}
