@@ -31,3 +31,9 @@ const TARGET = [REST,Float32Array.of(1,-1,0,MODE==='sleep'?2:0,0,0),
 const BODY = Int8Array.of(-5,5,-8,8,-10,10,-11,11,-12,12,-13,13,-13,13,-14,14,-14,14,-14,14,-14,14,-14,14,-14,14,-14,14,-14,14,-13,13,-13,13,-12,12,-11,11,-10,10,-8,8,-6,6);
 let ax=80, ay=41, hand=0, face=0, blink=0, beat=0, shine=0;
 let sway=0, ambient=0, playBeat=0, playActive=0;
+// Task companions share timing and face anchors, but have their own silhouette and world.
+const DEFAULT_CHARACTER = 'dishes';
+const CHARACTER = ['dishes','ingredients','cooking','laundry'].includes(options.get('character')) ? options.get('character') : DEFAULT_CHARACTER;
+if(CHARACTER==='ingredients') {PAL[13]='#a86b49';PAL[14]='#d29561';PAL[15]='#edbb7c';PAL[16]='#f5dbab';}
+if(CHARACTER==='cooking') {PAL[13]='#8b687e';PAL[14]='#b78c9f';PAL[15]='#dcb1ba';PAL[16]='#f2d6cf';}
+if(CHARACTER==='laundry') {PAL[13]='#b08749';PAL[14]='#dfb468';PAL[15]='#efd18b';PAL[16]='#fae8b9';}

@@ -11,3 +11,4 @@ backend/data/
 .aws/
 .codex/
 art/exports/frames.json
+art/exports/frames-*.json

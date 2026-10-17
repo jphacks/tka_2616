@@ -4,7 +4,10 @@ import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 const root=resolve(import.meta.dirname,'../..');
-const html=readFileSync(resolve(root,'frontend/public/scenes/awamon-pond.html'),'utf8');
+const character=process.argv[2] || 'dishes';
+assert(['dishes','ingredients','cooking','laundry'].includes(character));
+const sceneFile=character==='dishes'?'awamon-pond':`${character}-world`;
+const html=readFileSync(resolve(root,`frontend/public/scenes/${sceneFile}.html`),'utf8');
 const template=readFileSync(resolve(root,'.agents/skills/pixel-anims/assets/wizard-spellcaster.html'),'utf8');
 const regions=s=>new Map([...s.matchAll(/\/\/ #region (ENGINE[^\n]*)\n([\s\S]*?)\/\/ #endregion/g)].map(m=>[m[1],m[2]]));
 for(const [name,value] of regions(template))assert.equal(regions(html).get(name),value,`${name} must stay intact`);
@@ -42,5 +45,5 @@ for(const mode of ['idle','happy','wave','sleep','grow','bubble','dance']){
  }
 }
 mkdirSync(resolve(root,'art/exports'),{recursive:true});
-writeFileSync(resolve(root,'art/exports/frames.json'),JSON.stringify(frames));
-console.log(`${checks} mode/level/day-night combinations: palette, particle budget, distinct pose, loop seam passed. Reduced-motion: static. Exported sprites.`);
+writeFileSync(resolve(root,`art/exports/frames-${character}.json`),JSON.stringify(frames));
+console.log(`${character}: ${checks} mode/level/day-night combinations: palette, particle budget, distinct pose, loop seam passed. Reduced-motion: static. Exported sprites.`);

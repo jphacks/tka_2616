@@ -1,0 +1,661 @@
+<title>あわもんの小さな池</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+  :root { color-scheme: light; background: #46576e; }
+  html, body { height: 100%; margin: 0; overflow: hidden; background: #46576e; }
+  canvas {
+    position: fixed; inset: 0; width: 100%; height: 100%; display: block;
+    image-rendering: crisp-edges; image-rendering: pixelated;
+  }
+</style>
+<canvas id="view" role="img" aria-label="水色の妖精あわもんと、花や仲間が増えるピクセルの池"></canvas>
+<script>
+'use strict';
+// pixel-anims: keep every ENGINE region verbatim, rewrite every SCENE region for a new subject.
+(() => {
+// #region SCENE config
+const W = 160, H = 96;
+const FY = 86, POSE_STEP = 6;
+const DEFAULT_MODE = 'idle', DEFAULT_LEVEL = 1, DEFAULT_NIGHT = false;
+const options = new URLSearchParams(location.search);
+const MODE = ['idle','happy','wave','sleep','grow','bubble','dance'].includes(options.get('mode')) ? options.get('mode') : DEFAULT_MODE;
+const LEVEL = Math.max(1, Math.min(5, Number(options.get('level')) || DEFAULT_LEVEL));
+const NIGHT = options.has('night') ? options.get('night') === '1' : DEFAULT_NIGHT;
+// Ink, cream/sky, land, water, actor, blush, flowers, warm FX. 28 fixed colors.
+const PAL = ['#46576e','#f5efdf','#e0edf1','#c9dfed','#b0cbde','#b3bf9d','#cdd4af','#e3dfbd','#82997f','#92b9d1','#abd3e5','#cce9ed','#eef5e8','#668baa','#8bb9d8','#b7dbed','#e1f1ed','#e5aaa9','#bd7d88','#dbc291','#f3dfab','#faf1d4','#6f8d72','#94ad86','#d7b3bf','#f0d3cd','#8895ad','#65778f'];
+if (NIGHT) {
+  PAL[1]='#b2b8ce'; PAL[2]='#778ba9'; PAL[3]='#7085a0'; PAL[4]='#607792';
+  PAL[5]='#7e8d8d'; PAL[6]='#9aa79e'; PAL[7]='#b2b7a5';
+  PAL[9]='#6f94b6'; PAL[10]='#8cb5cf'; PAL[11]='#b0d4df';
+}
+const LIGHTEN = Uint8Array.of(13,1,3,4,4,6,7,7,5,10,11,12,12,14,15,16,16,25,17,20,21,21,23,6,25,25,2,26);
+const RAMPS = [Uint8Array.of(21,20,19,17),Uint8Array.of(12,11,10,9)];
+const RIM = Uint8Array.of(15,16,12), RIM_BANDS = Uint16Array.of(8,16,24);
+const RIM_OK = new Uint8Array(PAL.length); // Keep the fixed character outline; FX live outside it.
+const AIR = new Uint8Array(PAL.length);
+AIR[2]=AIR[3]=AIR[4]=1;
+const LIGHT = Float32Array.of(-0.6,-0.8);
+const DUR = Uint16Array.of(60,36,72,72);
+const EASE = Uint16Array.of(6,30,6,60);
+const EASE_OUT = Uint8Array.of(0,0,1,0);
+// y, body stretch, right hand, expression (0 neutral / 1 smile / 2 sleep), sparkle, tilt
+const NP = 6;
+const REST = Float32Array.of(0,0,0,MODE==='sleep'?2:0,0,0);
+const TARGET = [REST,Float32Array.of(1,-1,0,MODE==='sleep'?2:0,0,0),
+ Float32Array.of(MODE==='happy'?-7:MODE==='grow'?-4:MODE==='sleep'?1:-1,MODE==='happy'?1:0,MODE==='wave'?5:MODE==='happy'?3:0,MODE==='sleep'?2:MODE==='happy'||MODE==='grow'||MODE==='dance'||MODE==='bubble'?1:0,MODE==='grow'?1:0,MODE==='wave'?1:0),REST];
+// Stable row-table silhouette: 29px wide and 24px tall, shared across all forms.
+const BODY = Int8Array.of(-5,5,-8,8,-10,10,-11,11,-12,12,-13,13,-13,13,-14,14,-14,14,-14,14,-14,14,-14,14,-14,14,-14,14,-14,14,-13,13,-13,13,-12,12,-11,11,-10,10,-8,8,-6,6);
+let ax=80, ay=41, hand=0, face=0, blink=0, beat=0, shine=0;
+let sway=0, ambient=0, playBeat=0, playActive=0;
+// Task companions share timing and face anchors, but have their own silhouette and world.
+const DEFAULT_CHARACTER = 'ingredients';
+const CHARACTER = ['dishes','ingredients','cooking','laundry'].includes(options.get('character')) ? options.get('character') : DEFAULT_CHARACTER;
+if(CHARACTER==='ingredients') {PAL[13]='#a86b49';PAL[14]='#d29561';PAL[15]='#edbb7c';PAL[16]='#f5dbab';}
+if(CHARACTER==='cooking') {PAL[13]='#8b687e';PAL[14]='#b78c9f';PAL[15]='#dcb1ba';PAL[16]='#f2d6cf';}
+if(CHARACTER==='laundry') {PAL[13]='#b08749';PAL[14]='#dfb468';PAL[15]='#efd18b';PAL[16]='#fae8b9';}
+// #endregion
+
+// #region ENGINE
+const N = W * H, STEP_MS = 1000 / 60, EMPTY = 255;
+const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const BAYER = Uint8Array.of(0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5); // 4x4 ordered dither, 0-15
+const SHAKE = Int8Array.of(1, -1, 0, 1, -1, 1, 0, -1);
+
+const bg = new Uint8Array(N);   // static backdrop, built once
+const buf = new Uint8Array(N);  // indexed frame
+const spr = new Uint8Array(N);  // actor layer, EMPTY where transparent
+
+const view = document.getElementById('view');
+const vctx = view.getContext('2d', { alpha: false });
+const off = document.createElement('canvas');
+off.width = W; off.height = H;
+const octx = off.getContext('2d');
+const img = octx.createImageData(W, H);
+const u32 = new Uint32Array(img.data.buffer);
+const LE = new Uint8Array(Uint32Array.of(1).buffer)[0] === 1;
+const PAL32 = Uint32Array.from(PAL, hex => {
+  const v = parseInt(hex.slice(1), 16), r = v >> 16, g = (v >> 8) & 255, b = v & 255;
+  return (LE ? 0xff000000 | b << 16 | g << 8 | r : r << 24 | g << 16 | b << 8 | 0xff) >>> 0;
+});
+const RB = Uint32Array.from(RIM_BANDS, r => r * r);
+
+// Particle pool (structure of arrays). ORBIT reuses pvx as angular speed and pvy as radius decay.
+const MAXP = 320, ORBIT = 1, BURST = 2, TRAIL = 3, MOTE = 4;
+const pKind = new Uint8Array(MAXP), pLife = new Int16Array(MAXP), pMax = new Int16Array(MAXP), pRamp = new Uint8Array(MAXP);
+const px = new Float32Array(MAXP), py = new Float32Array(MAXP);
+const pqx = new Float32Array(MAXP), pqy = new Float32Array(MAXP);
+const pvx = new Float32Array(MAXP), pvy = new Float32Array(MAXP);
+const pa = new Float32Array(MAXP), pr = new Float32Array(MAXP);
+let cursor = 0;
+
+const pose = Float32Array.from(TARGET[0]), from = Float32Array.from(TARGET[0]), snap = Float32Array.from(TARGET[0]);
+const spring = new Float32Array(8); // up to 4 damped springs as [pos, vel] pairs
+const clock = new Float64Array(2);  // last frame time, accumulator
+const ctl = new Int32Array(3);      // embedding control: paused, fast-forward ticks left, fast-forward ticks per frame
+const rng = Uint32Array.of(0x9e3779b9);
+let state = 0, stT = -1, tick = -1;
+let srcX = 0, srcY = 0, rim = 1; // FX light (also the orbit center) and its level, set by sample()
+let shakeT = 0, flashT = 0, shakeX = 0, shakeY = 0, scale = 1, viewX = 0, viewY = 0;
+let jx = 0, jy = 0;              // joint() result
+let cropX = 0, cropY = 0, cropW = W, cropH = H; // region shown on screen; QA zooms in via #t=N&crop=x,y,w,h
+
+// Seeded xorshift32 so #t=N always renders the same frame. Never use Math.random.
+function rand() {
+  let x = rng[0];
+  x ^= x << 13; x ^= x >>> 17; x ^= x << 5;
+  rng[0] = x;
+  return rng[0] / 4294967296;
+}
+
+function plot(t, x, y, c) {
+  if (x >= 0 && x < W && y >= 0 && y < H) t[y * W + x] = c;
+}
+function hline(t, x0, x1, y, c) {
+  for (let x = x0; x <= x1; x++) plot(t, x, y, c);
+}
+function rect(t, x, y, w, h, c) {
+  for (let j = 0; j < h; j++) hline(t, x, x + w - 1, y + j, c);
+}
+function line(t, x0, y0, x1, y1, c, yMax = H - 1) {
+  const n = Math.max(Math.abs(x1 - x0), Math.abs(y1 - y0)) || 1;
+  for (let s = 0; s <= n; s++) {
+    const y = Math.round(y0 + (y1 - y0) * s / n);
+    if (y <= yMax) plot(t, Math.round(x0 + (x1 - x0) * s / n), y, c);
+  }
+}
+// 2px prop from one DDA so both edges step together: dark edge left of steep lines, below shallow ones.
+function line2(t, x0, y0, x1, y1, light, dark, yMax = H - 1) {
+  const ax = Math.abs(x1 - x0), ay = Math.abs(y1 - y0), n = Math.max(ax, ay) || 1;
+  const ox = ay > ax ? -1 : 0, oy = ay > ax ? 0 : 1;
+  for (let s = 0; s <= n; s++) {
+    const x = Math.round(x0 + (x1 - x0) * s / n), y = Math.round(y0 + (y1 - y0) * s / n);
+    if (y + oy <= yMax) plot(t, x + ox, y + oy, dark);
+    if (y <= yMax) plot(t, x, y, light);
+  }
+}
+// Tapered capsule (x0,y0,r0)-(x1,y1,r1) shaded by facing toward LIGHT: necks, tails, limbs, sleeves.
+function capsule(t, x0, y0, r0, x1, y1, r1, dark, base, light) {
+  const dx = x1 - x0, dy = y1 - y0, len2 = dx * dx + dy * dy || 1, R = Math.ceil(Math.max(r0, r1));
+  const xa = Math.floor(Math.min(x0, x1)) - R, xb = Math.ceil(Math.max(x0, x1)) + R;
+  const ya = Math.floor(Math.min(y0, y1)) - R, yb = Math.ceil(Math.max(y0, y1)) + R;
+  for (let y = ya; y <= yb; y++) {
+    for (let x = xa; x <= xb; x++) {
+      const u = Math.max(0, Math.min(1, ((x - x0) * dx + (y - y0) * dy) / len2));
+      const qx = x - x0 - dx * u, qy = y - y0 - dy * u, r = r0 + (r1 - r0) * u;
+      if (qx * qx + qy * qy > r * r) continue;
+      const f = (qx * LIGHT[0] + qy * LIGHT[1]) / (r || 1); // -1 shadow side .. 1 lit side
+      plot(t, x, y, f > 0.35 ? light : f < -0.35 ? dark : base);
+    }
+  }
+}
+// Two-bone solve (elbow, knee) from root (ax,ay) to end (bx,by); side +-1 picks the bend. Writes jx, jy.
+function joint(ax, ay, bx, by, l1, l2, side) {
+  const dx = bx - ax, dy = by - ay, dist = Math.sqrt(dx * dx + dy * dy) || 0.001, d = Math.min(dist, l1 + l2);
+  const a = (l1 * l1 - l2 * l2 + d * d) / (2 * d), h = Math.sqrt(Math.max(0, l1 * l1 - a * a));
+  const ux = dx / dist, uy = dy / dist;
+  jx = Math.round(ax + ux * a - uy * h * side);
+  jy = Math.round(ay + uy * a + ux * h * side);
+}
+function disc(cx, cy, r, c, t = buf) {
+  const k = Math.ceil(r);
+  for (let dy = -k; dy <= k; dy++)
+    for (let dx = -k; dx <= k; dx++) if (dx * dx + dy * dy <= r * r) plot(t, cx + dx, cy + dy, c);
+}
+function ring(cx, cy, r, c, t = buf) {
+  r = Math.round(r);
+  for (let x = r, y = 0, err = 1 - r; x >= y; y++) {
+    plot(t, cx + x, cy + y, c); plot(t, cx - x, cy + y, c);
+    plot(t, cx + x, cy - y, c); plot(t, cx - x, cy - y, c);
+    plot(t, cx + y, cy + x, c); plot(t, cx - y, cy + x, c);
+    plot(t, cx + y, cy - x, c); plot(t, cx - y, cy - x, c);
+    if (err < 0) err += 2 * y + 3;
+    else { err += 2 * (y - x) + 5; x--; }
+  }
+}
+// Posterized glow (core, solid falloff, checker fringe) that only tints AIR pixels.
+function halo(cx, cy, r, core, mid, t = buf) {
+  r = Math.round(r);
+  const r1 = r * r * 0.09, r2 = r * r * 0.36;
+  for (let dy = -r; dy <= r; dy++) {
+    const y = cy + dy;
+    if (y < 0 || y >= H) continue;
+    for (let dx = -r; dx <= r; dx++) {
+      const x = cx + dx, d2 = dx * dx + dy * dy, i = y * W + x;
+      if (x < 0 || x >= W || d2 > r * r || !AIR[t[i]]) continue;
+      if (d2 <= r1) t[i] = core;
+      else if (d2 <= r2 || (x + y) & 1) t[i] = mid;
+    }
+  }
+}
+// Light pool on any surface (floor, wall, body): 2 LIGHTEN steps at the core, 1 inside, checker fringe.
+function lighten(cx, cy, r, t = buf) {
+  r = Math.round(r);
+  const r1 = r * r * 0.16, r2 = r * r * 0.5;
+  for (let dy = -r; dy <= r; dy++) {
+    const y = cy + dy;
+    if (y < 0 || y >= H) continue;
+    for (let dx = -r; dx <= r; dx++) {
+      const x = cx + dx, d2 = dx * dx + dy * dy, i = y * W + x;
+      if (x < 0 || x >= W || d2 > r * r) continue;
+      if (d2 <= r1) t[i] = LIGHTEN[LIGHTEN[t[i]]];
+      else if (d2 <= r2 || (x + y) & 1) t[i] = LIGHTEN[t[i]];
+    }
+  }
+}
+
+function spawn(kind, life, x, y, vx, vy, ramp = 0) {
+  let i = cursor;
+  for (let n = 0; n < MAXP && pKind[i]; n++) i = (i + 1) % MAXP; // pool full: recycle the slot at cursor
+  cursor = (i + 1) % MAXP;
+  pKind[i] = kind; pLife[i] = pMax[i] = Math.max(2, life); pRamp[i] = ramp;
+  px[i] = pqx[i] = x; py[i] = pqy[i] = y; pvx[i] = vx; pvy[i] = vy;
+  return i;
+}
+// Spark spiralling into (srcX, srcY), starting at an angle in [a0, a0 + arc); lives until its radius is ~1px.
+function spawnOrbit(r, speed, decay, a0 = 0, arc = 6.283, ramp = 0) {
+  const a = a0 + rand() * arc;
+  const i = spawn(ORBIT, Math.log(r / 1.2) / -Math.log(decay), srcX + Math.cos(a) * r, srcY + Math.sin(a) * r * 0.5,
+    speed, decay, ramp);
+  pa[i] = a; pr[i] = r;
+  return i;
+}
+function updateParticles() {
+  for (let i = 0; i < MAXP; i++) {
+    const k = pKind[i];
+    if (!k) continue;
+    if (--pLife[i] <= 0) { pKind[i] = 0; continue; }
+    pqx[i] = px[i]; pqy[i] = py[i];
+    if (k === ORBIT) {
+      pr[i] *= pvy[i];
+      pa[i] += pvx[i] * 14 / (pr[i] + 4); // spins faster as it falls inward
+      px[i] = srcX + Math.cos(pa[i]) * pr[i];
+      py[i] = srcY + Math.sin(pa[i]) * pr[i] * 0.5;
+      continue;
+    }
+    if (k === BURST) { pvx[i] *= 0.93; pvy[i] = pvy[i] * 0.93 + 0.035; }
+    else if (k === TRAIL) { pvx[i] *= 0.9; pvy[i] *= 0.9; }
+    else pvx[i] = Math.sin(pLife[i] * 0.15) * 0.08;
+    px[i] += pvx[i]; py[i] += pvy[i];
+    if (py[i] > FY) { py[i] = FY; pvy[i] *= -0.45; pvx[i] *= 0.7; }
+  }
+}
+function stepSpring(k, target) {
+  spring[k + 1] = (spring[k + 1] + (target - spring[k]) * 0.03) * 0.88;
+  spring[k] += spring[k + 1];
+}
+
+// Stamp the actor over the scene: auto outline in ink, plus a 1px rim on edges facing (srcX, srcY).
+function composite() {
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const i = y * W + x, c = spr[i];
+      if (c === EMPTY) {
+        if ((x > 0 && spr[i - 1] !== EMPTY) || (x < W - 1 && spr[i + 1] !== EMPTY) ||
+          (y > 0 && spr[i - W] !== EMPTY) || (y < H - 1 && spr[i + W] !== EMPTY)) buf[i] = 0;
+        continue;
+      }
+      const dx = srcX - x, dy = srcY - y, d2 = dx * dx + dy * dy;
+      const lv = rim - (d2 < RB[0] ? 0 : d2 < RB[1] ? 1 : d2 < RB[2] ? 2 : 3);
+      const sx = dx > 1 ? 1 : dx < -1 ? -1 : 0, sy = dy > 1 ? 1 : dy < -1 ? -1 : 0;
+      const open = (sx !== 0 && (x + sx < 0 || x + sx >= W || spr[i + sx] === EMPTY)) ||
+        (sy !== 0 && (y + sy < 0 || y + sy >= H || spr[i + sy * W] === EMPTY));
+      buf[i] = lv > 0 && RIM_OK[c] && open ? (lv === 1 ? LIGHTEN[c] : RIM[Math.min(lv, 4) - 2]) : c;
+    }
+  }
+}
+
+function dot(fx, fy, c, back) {
+  const x = Math.round(fx), y = Math.round(fy);
+  if (x < 0 || x >= W || y < 0 || y >= H) return;
+  const i = y * W + x;
+  if (!back || spr[i] === EMPTY) buf[i] = c;
+}
+// Orbiting sparks on the far half of their ellipse pass behind the actor.
+function drawParticles(front) {
+  for (let i = 0; i < MAXP; i++) {
+    const k = pKind[i];
+    if (!k) continue;
+    const back = k === ORBIT && Math.sin(pa[i]) < 0;
+    if (back === front) continue;
+    const ramp = RAMPS[pRamp[i]], n = ramp.length, step = (pMax[i] - pLife[i]) * n / pMax[i] | 0;
+    dot(pqx[i], pqy[i], ramp[Math.min(n - 1, step + 1)], back);
+    dot(px[i], py[i], ramp[step], back);
+  }
+}
+
+function update() {
+  tick++;
+  if (++stT >= DUR[state]) { state = (state + 1) % DUR.length; stT = 0; from.set(pose); }
+  const p = Math.min(1, stT / EASE[state]);
+  const e = EASE_OUT[state] ? p * (2 - p) : 0.5 - 0.5 * Math.cos(Math.PI * p);
+  const to = TARGET[state];
+  for (let k = 0; k < NP; k++) pose[k] = from[k] + (to[k] - from[k]) * e;
+  step();
+  updateParticles();
+  if (calm) shakeT = flashT = 0;
+  if (shakeT > 0) shakeT--;
+  if (flashT > 0) flashT--;
+  const amp = shakeT > 8 ? 2 : shakeT > 0 ? 1 : 0, s = (shakeT >> 1) & 7;
+  shakeX = SHAKE[s] * amp; shakeY = SHAKE[(s + 3) & 7] * amp;
+}
+function render() {
+  buf.set(bg);
+  drawUnder();
+  spr.fill(EMPTY);
+  drawActor();
+  composite();
+  drawOver();
+  if (flashT > 0) for (let i = 0; i < N; i++) buf[i] = LIGHTEN[buf[i]]; // one LIGHTEN step per flash frame
+  present();
+}
+function present() {
+  for (let i = 0; i < N; i++) u32[i] = PAL32[buf[i]];
+  octx.putImageData(img, 0, 0);
+  vctx.fillStyle = PAL[0];
+  vctx.fillRect(0, 0, view.width, view.height);
+  vctx.drawImage(off, cropX, cropY, cropW, cropH, viewX + shakeX * scale, viewY + shakeY * scale, cropW * scale, cropH * scale);
+}
+function resize() {
+  const dpr = window.devicePixelRatio || 1;
+  view.width = Math.round(innerWidth * dpr);
+  view.height = Math.round(innerHeight * dpr);
+  scale = Math.max(1, Math.floor(Math.min(view.width / cropW, view.height / cropH)));
+  viewX = (view.width - cropW * scale) >> 1;
+  viewY = (view.height - cropH * scale) >> 1;
+  vctx.imageSmoothingEnabled = false; // resizing resets context state
+  present();
+}
+function frame(now) {
+  requestAnimationFrame(frame);
+  let dt = now - clock[0];
+  clock[0] = now;
+  if (ctl[0]) { clock[1] = 0; return; }             // paused by the embedding page: hold the frame
+  if (ctl[1] > 0) {                                  // fast-forward: a burst of steps each frame, then play on
+    for (let n = Math.min(ctl[1], ctl[2]); n > 0; n--, ctl[1]--) update();
+    clock[1] = 0;
+    render();
+    return;
+  }
+  if (Math.abs(dt - STEP_MS) < 1) dt = STEP_MS; // absorb vsync jitter: one step per frame on 60 Hz displays
+  clock[1] = Math.min(250, clock[1] + Math.max(0, dt));
+  let steps = 0;
+  while (clock[1] >= STEP_MS) { clock[1] -= STEP_MS; update(); steps++; }
+  if (steps) render();
+}
+// Fail loudly at boot on SCENE config mistakes that would otherwise render wrong silently.
+function checkContract() {
+  const fail = msg => { throw new Error('pixel-anims contract: ' + msg); };
+  const colors = PAL.length;
+  if (!PAL.every(h => /^#[0-9a-f]{6}$/i.test(h))) fail('PAL entries must be #rrggbb');
+  if (colors > EMPTY) fail('PAL is limited to 255 colors');
+  for (const [name, lut] of [['LIGHTEN', LIGHTEN], ['RIM_OK', RIM_OK], ['AIR', AIR]])
+    if (lut.length !== colors) fail(`${name} must have PAL.length entries`);
+  for (const [name, lut] of [['LIGHTEN', LIGHTEN], ['RIM', RIM], ...RAMPS.map((r, k) => [`RAMPS[${k}]`, r])])
+    if (!lut.length || lut.some(c => c >= colors)) fail(`${name} must hold palette indices`);
+  if (RIM.length !== 3 || RIM_BANDS.length !== 3) fail('RIM and RIM_BANDS need 3 entries');
+  const states = DUR.length;
+  if (EASE.length !== states || EASE_OUT.length !== states || TARGET.length !== states)
+    fail('DUR, EASE, EASE_OUT and TARGET need one entry per state');
+  DUR.forEach((d, k) => {
+    if (d % POSE_STEP) fail(`DUR[${k}] must be a multiple of POSE_STEP`);
+    if (!(EASE[k] >= 1 && EASE[k] <= d)) fail(`EASE[${k}] must be within 1..DUR[${k}]`);
+    if (TARGET[k].length !== NP) fail(`TARGET[${k}] needs NP values`);
+  });
+  if (TARGET[states - 1].some((v, k) => v !== TARGET[0][k])) fail('the last state must return to TARGET[0]');
+}
+// #endregion
+
+// #region SCENE logic
+function steppedOval(t,cx,cy,rx,ry,color) {
+  for(let y=-ry;y<=ry;y++) {
+    const half=Math.floor(rx*Math.sqrt(Math.max(0,1-y*y/(ry*ry))));
+    hline(t,cx-half,cx+half,cy+y,color);
+  }
+}
+function flower(t,x,y,c) {
+  rect(t,x-1,y-3,3,7,c);rect(t,x-3,y-1,7,3,c);plot(t,x,y,20);
+}
+function tree(t,x,y,size) {
+  rect(t,x-1,y,3,10,8);
+  steppedOval(t,x,y-4,size,size,8);
+  steppedOval(t,x-2,y-6,size-1,size-2,5);
+  hline(t,x-3,x+1,y-size-3,6);
+}
+function cloud(t,x,y) {
+  rect(t,x,y,18,3,12);rect(t,x+3,y-3,11,3,12);rect(t,x+6,y-5,5,2,12);
+}
+function leaf(t,x,y) {
+  line(t,x,y,x+4,y-6,22);hline(t,x+1,x+6,y-5,23);hline(t,x+2,x+6,y-6,23);hline(t,x+3,x+5,y-7,6);
+}
+function buildBackground() {
+  bg.fill(2);rect(bg,0,24,W,15,3);rect(bg,0,39,W,57,6);
+  // Soft stepped ridges; no smooth vectors or dither over the whole field.
+  for(let x=0;x<W;x++) {
+    const ridge=33+Math.round(Math.sin(x/19)*3);
+    rect(bg,x,ridge,1,11,5);
+    rect(bg,x,ridge+7,1,5,6);
+  }
+  if(NIGHT) {
+    disc(130,16,6,21,bg);disc(133,14,5,2,bg);
+    for(let i=0;i<15;i++)plot(bg,(i*37+11)%160,(i*11+5)%30,12);
+  } else {disc(130,16,6,20,bg);hline(bg,128,132,12,21);cloud(bg,18,18);cloud(bg,90,10);}
+  rect(bg,0,78,W,18,7);
+  for(let i=0;i<38;i++) {
+    const x=(i*43+9)%160,y=44+(i*17)%48;
+    hline(bg,x,x+2,y,5);plot(bg,x+1,y-1,5);
+  }
+  tree(bg,16,42,10);tree(bg,144,48,12);tree(bg,3,58,8);
+  const rx=LEVEL===1?35:LEVEL===2?42:49;
+  steppedOval(bg,81,69,rx+3,18,5);steppedOval(bg,81,66,rx+2,18,8);
+  steppedOval(bg,81,65,rx,17,9);steppedOval(bg,81,63,rx-2,14,10);
+  steppedOval(bg,78,60,rx-8,9,11);
+  hline(bg,56,63,64,12);hline(bg,101,110,69,11);hline(bg,71,86,77,11);
+  rect(bg,31,75,7,4,26);rect(bg,32,73,5,3,1);
+  rect(bg,125,79,9,4,26);rect(bg,126,77,6,3,1);
+  flower(bg,23,68,25);flower(bg,137,60,21);
+  if(LEVEL>=2) {steppedOval(bg,54,70,6,2,23);hline(bg,55,59,69,6);steppedOval(bg,110,57,6,2,23);}
+  if(LEVEL>=3) {leaf(bg,41,60);leaf(bg,40,65);leaf(bg,121,62);leaf(bg,119,60);}
+  if(LEVEL>=4) {flower(bg,53,67,24);flower(bg,111,54,25);flower(bg,25,82,24);flower(bg,141,81,25);}
+  if(LEVEL>=5) {
+    // A tiny duck house at the bank.
+    rect(bg,119,35,16,14,19);rect(bg,117,33,20,3,18);rect(bg,120,30,14,3,18);rect(bg,123,27,8,3,18);
+    rect(bg,125,40,5,9,0);rect(bg,120,38,3,3,21);
+  }
+  if(CHARACTER!=='dishes')buildCompanionBackground();
+  sample();
+}
+function step() {
+  if(tick%POSE_STEP===0)sample();
+  if(!calm && MODE==='grow' && state===2 && stT===6) {
+    for(let i=0;i<20;i++) {
+      const angle=rand()*Math.PI*2;
+      spawn(BURST,32+Math.floor(rand()*16),ax+Math.round(Math.cos(angle)*20),ay+10+Math.round(Math.sin(angle)*15),Math.cos(angle)*0.6,-0.6-rand()*0.6,0);
+    }
+  }
+  if(!calm && MODE==='happy' && state===2 && stT===6) {
+    for(let i=0;i<8;i++)spawn(MOTE,30,ax-19+i*5,ay+3,0,-0.18,1);
+  }
+}
+function sample() {
+  snap.set(pose);
+  ax=80+Math.round(snap[5]);
+  ay=41+Math.round(snap[0]);
+  hand=Math.round(snap[2]);face=Math.round(snap[3]);shine=Math.round(snap[4]*4);
+  beat=Math.floor((tick+240)%240/6);blink=beat===7||beat===8;
+  sway=Math.round(Math.sin((tick+240)%240*Math.PI/120));
+  ambient=Math.floor(((tick+240)%240)/24);
+  playActive=state===2?1:0;playBeat=playActive?Math.floor(stT/6):0;
+  if(MODE==='dance' && playActive){ax+=Math.round(Math.sin(playBeat*Math.PI/3)*4);ay-=Math.round(Math.abs(Math.sin(playBeat*Math.PI/3))*3);hand=playBeat%4<2?4:1;}
+  if(calm){ay=41;hand=MODE==='wave'?5:0;face=MODE==='sleep'?2:MODE==='happy'||MODE==='grow'?1:0;shine=0;sway=0;blink=0;ambient=0;ax=80;playActive=0;playBeat=0;}
+  srcX=ax;srcY=ay-5;rim=0;
+}
+function drawActor() {
+  if(CHARACTER!=='dishes'){drawCompanion();return;}
+  // Short arms, closed silhouette, cream highlight from upper left.
+  rect(spr,ax-18,ay+12,6,5,14);rect(spr,ax+13,ay+12-hand,6,5,14);
+  hline(spr,ax-17,ax-15,ay+12,16);hline(spr,ax+15,ax+17,ay+12-hand,16);
+  // Signature two foam bubbles preserve the original prototype's identity.
+  disc(ax-8,ay,4,14,spr);disc(ax+7,ay-4,4,15,spr);hline(spr,ax+6,ax+8,ay-6,16);
+  for(let row=0;row<BODY.length/2;row++) {
+    const left=BODY[row*2],right=BODY[row*2+1];
+    for(let x=left;x<=right;x++) {
+      let c=15;
+      if(row>15 || x>10)c=14;
+      else if(row<9 && x<6)c=16;
+      plot(spr,ax+x,ay+row,c);
+    }
+  }
+  hline(spr,ax-8,ax-4,ay+4,12);hline(spr,ax-10,ax-8,ay+5,12);
+  rect(spr,ax-11,ay+14,4,2,17);rect(spr,ax+8,ay+14,4,2,17);
+  if(face===2 || blink) {hline(spr,ax-7,ax-4,ay+12,0);hline(spr,ax+4,ax+7,ay+12,0);}
+  else if(face===1) {
+    line(spr,ax-8,ay+12,ax-6,ay+10,0);line(spr,ax-6,ay+10,ax-4,ay+12,0);
+    line(spr,ax+4,ay+12,ax+6,ay+10,0);line(spr,ax+6,ay+10,ax+8,ay+12,0);
+  } else {rect(spr,ax-7,ay+9,3,5,0);rect(spr,ax+5,ay+9,3,5,0);plot(spr,ax-7,ay+9,12);plot(spr,ax+5,ay+9,12);}
+  if(face===1){rect(spr,ax-2,ay+15,5,3,18);hline(spr,ax-1,ax+1,ay+18,17);}
+  else if(face===2){hline(spr,ax-1,ax+1,ay+17,18);}
+  else {plot(spr,ax-2,ay+16,18);hline(spr,ax-1,ax+1,ay+17,18);plot(spr,ax+2,ay+16,18);}
+  if(LEVEL>=2)leaf(spr,ax-1,ay-1);
+  if(LEVEL>=3){leaf(spr,ax-4,ay-2);line(spr,ax-3,ay-5,ax-8,ay-8,22);hline(spr,ax-9,ax-5,ay-8,23);}
+  if(LEVEL>=4){flower(spr,ax-7,ay-2,24);flower(spr,ax+1,ay-4,25);flower(spr,ax+9,ay-1,21);}
+  if(LEVEL>=5){rect(spr,ax-10,ay+20,21,2,19);plot(spr,ax,ay+20,21);}
+}
+function drawUnder() {
+  if(CHARACTER!=='dishes'){drawCompanionUnder();return;}
+  // Contact ripple and slow water glints stay separate from the character.
+  hline(buf,ax-15,ax+15,67,9);hline(buf,ax-11,ax+11,68,11);
+  hline(buf,42+ambient,47+ambient,62,12);hline(buf,102-ambient,108-ambient,72,12);
+  if(LEVEL>=4) {rect(buf,103+sway*2,66,4,2,17);plot(buf,108+sway*2,65,18);plot(buf,108+sway*2,68,18);}
+  if(LEVEL>=5) {
+    steppedOval(buf,115,73+sway,6,4,15);rect(buf,111,68+sway,7,5,16);
+    plot(buf,112,71+sway,0);plot(buf,116,71+sway,0);hline(buf,113,115,74+sway,18);
+  }
+}
+function drawOver() {
+  drawParticles(false);drawParticles(true);
+  if(face===2) {
+    const x=ax+20,y=ay-2-sway;
+    hline(buf,x,x+3,y,12);line(buf,x+3,y,x,y+3,12);hline(buf,x,x+3,y+3,12);
+    hline(buf,x+7,x+11,y-7,12);line(buf,x+11,y-7,x+7,y-3,12);hline(buf,x+7,x+11,y-3,12);
+  }
+  if(MODE==='bubble' && playActive) {
+    // Three clean outlined bubbles rise outside the face; sampled integer positions.
+    for(let i=0;i<3;i++) {
+      const bx=ax+22+i*5,by=ay+10-playBeat*2-i*5,r=2+i%2;
+      ring(bx,by,r,9);plot(buf,bx-1,by-1,12);
+    }
+  }
+  if(MODE==='dance' && playActive) {
+    // A pair of pixel musical notes, kept clear of the silhouette.
+    rect(buf,ax-25,ay+2-playBeat%3,2,7,18);rect(buf,ax-28,ay+8-playBeat%3,4,2,18);
+    hline(buf,ax-25,ax-22,ay+2-playBeat%3,18);
+    rect(buf,ax+24,ay-3+playBeat%3,2,7,19);rect(buf,ax+21,ay+3+playBeat%3,4,2,19);
+  }
+  if(shine>0) {
+    const r=18+shine;
+    line(buf,ax-r,ay+4,ax-r,ay+8,21);line(buf,ax-r-2,ay+6,ax-r+2,ay+6,21);
+    line(buf,ax+r,ay-2,ax+r,ay+2,21);line(buf,ax+r-2,ay,ax+r+2,ay,21);
+  }
+}
+function buildCompanionBackground() {
+ bg.fill(1);
+ if(CHARACTER==='laundry') {
+  rect(bg,0,0,W,65,2);rect(bg,0,65,W,31,7);
+  rect(bg,0,63,W,2,5);cloud(bg,18,16);cloud(bg,116,22);
+  if(NIGHT){disc(133,12,5,21,bg);disc(135,10,4,2,bg);}
+  line(bg,9,31,151,31,8);rect(bg,10,30,2,34,8);rect(bg,148,30,2,34,8);
+  // Quiet laundry hanging behind the sun.
+  if(LEVEL>=2){rect(bg,22,32,17,18,11);hline(bg,22,38,48,9);rect(bg,24,30,2,4,19);rect(bg,35,30,2,4,19);}
+  if(LEVEL>=3){rect(bg,117,33,15,16,25);hline(bg,117,131,46,17);rect(bg,119,30,2,5,19);rect(bg,129,30,2,5,19);}
+  if(LEVEL>=4){flower(bg,24,74,24);flower(bg,137,77,25);leaf(bg,25,81);leaf(bg,135,84);}
+  rect(bg,117,73,20,12,19);rect(bg,119,71,16,5,12);
+  for(let i=0;i<4;i++)rect(bg,119+i*5,76,2,7,7);
+  if(LEVEL>=5){cloud(bg,67,14);flower(bg,45,81,25);flower(bg,113,86,24);}
+ } else {
+  // Warm kitchen with window, tiled wall, and a task-specific worktop.
+  rect(bg,0,56,W,40,7);rect(bg,0,56,W,4,19);
+  for(let y=40;y<56;y+=8)hline(bg,0,159,y,7);
+  for(let x=0;x<160;x+=16)rect(bg,x,40,1,16,7);
+  rect(bg,58,8,45,27,19);rect(bg,60,10,41,23,2);rect(bg,80,10,2,23,19);hline(bg,60,100,22,19);
+  if(NIGHT){disc(91,16,4,21,bg);disc(93,14,3,2,bg);}else{cloud(bg,64,18);disc(92,16,3,20,bg);}
+  if(CHARACTER==='ingredients') {
+   rect(bg,10,14,26,42,26);rect(bg,12,16,22,38,12);hline(bg,12,33,33,26);rect(bg,29,22,2,6,13);rect(bg,29,39,2,6,13);
+   rect(bg,117,43,27,13,19);hline(bg,119,141,47,7);hline(bg,119,141,52,7);
+   disc(125,42,5,23,bg);leaf(bg,126,40);disc(136,43,4,17,bg);
+   if(LEVEL>=2){rect(bg,45,51,7,5,19);leaf(bg,48,50);}
+   if(LEVEL>=3){rect(bg,115,17,29,3,19);rect(bg,119,9,6,8,11);rect(bg,132,8,7,9,25);}
+   if(LEVEL>=4){flower(bg,49,46,24);flower(bg,137,36,25);}
+   if(LEVEL>=5){rect(bg,12,70,24,12,19);disc(18,70,4,23,bg);disc(28,70,4,17,bg);}
+  } else {
+   rect(bg,12,40,27,16,26);rect(bg,14,42,23,11,12);rect(bg,17,45,6,5,9);rect(bg,28,45,6,5,9);
+   rect(bg,119,41,25,15,19);rect(bg,121,43,9,10,7);rect(bg,133,43,9,10,7);
+   if(LEVEL>=2){rect(bg,45,15,3,17,19);disc(46,14,3,19,bg);}
+   if(LEVEL>=3){rect(bg,117,19,26,3,19);rect(bg,121,10,6,9,11);rect(bg,132,12,6,7,25);}
+   if(LEVEL>=4){steppedOval(bg,130,65,11,3,12);disc(129,63,4,23,bg);disc(135,63,2,17,bg);}
+   if(LEVEL>=5){flower(bg,22,24,24);leaf(bg,22,33);rect(bg,18,32,9,8,19);}
+  }
+ }
+ // All companions have a little mat, with a brighter stage as their world grows.
+ steppedOval(bg,80,72,28+LEVEL,7,19);steppedOval(bg,80,70,27+LEVEL,6,1);
+}
+function drawCompanion() {
+ if(CHARACTER==='ingredients') {
+  // Rounded carrot: broad cheeks, gently tapered root, leafy crown.
+  for(let row=0;row<26;row++) {
+   const half=row<5?8+row:row<14?13:Math.max(2,13-(row-13));
+   for(let x=-half;x<=half;x++)plot(spr,ax+x,ay+row,x>7||row>20?14:x<0&&row<11?16:15);
+  }
+  rect(spr,ax-17,ay+12,5,4,14);rect(spr,ax+13,ay+12-hand,5,4,14);
+  leaf(spr,ax,ay);leaf(spr,ax-4,ay-1);line(spr,ax-2,ay-1,ax-8,ay-7,22);hline(spr,ax-10,ax-5,ay-7,23);
+  hline(spr,ax-5,ax-2,ay+21,13);
+  if(LEVEL>=2)leaf(spr,ax+3,ay-2);
+  if(LEVEL>=3){rect(spr,ax-10,ay+18,21,2,23);rect(spr,ax+8,ay+19,3,4,23);}
+  if(LEVEL>=4)flower(spr,ax-7,ay-3,25);
+  if(LEVEL>=5){flower(spr,ax+4,ay-5,21);plot(spr,ax,ay+19,21);}
+ } else if(CHARACTER==='cooking') {
+  // Enamel pot: lid, short handles, rounded base. Face stays on the pot, never the lid.
+  rect(spr,ax-14,ay+4,29,15,15);rect(spr,ax-12,ay+19,25,3,14);
+  rect(spr,ax-14,ay+4,5,13,16);hline(spr,ax-12,ax+12,ay+4,16);
+  rect(spr,ax-20,ay+9,6,5,13);rect(spr,ax-19,ay+10,4,2,16);
+  rect(spr,ax+15,ay+9-hand,6,5,13);rect(spr,ax+16,ay+10-hand,4,2,16);
+  rect(spr,ax-16,ay+1,33,3,13);rect(spr,ax-13,ay-1,27,3,15);rect(spr,ax-3,ay-4,7,3,13);
+  if(LEVEL>=2){line2(spr,ax-19,ay+11,ax-22,ay-2,19,13);disc(ax-22,ay-3,2,19,spr);}
+  if(LEVEL>=3){rect(spr,ax-6,ay-9,13,6,12);disc(ax-5,ay-10,3,12,spr);disc(ax+1,ay-12,4,12,spr);disc(ax+6,ay-10,3,12,spr);hline(spr,ax-5,ax+5,ay-5,11);}
+  if(LEVEL>=4){rect(spr,ax-9,ay+19,19,2,19);plot(spr,ax,ay+19,21);}
+  if(LEVEL>=5){flower(spr,ax+11,ay+2,21);hline(spr,ax-13,ax+12,ay+21,19);}
+ } else {
+  // Soft sun: eight separate warm rays and a cream face.
+  for(let i=0;i<8;i++) {
+   const angle=i*Math.PI/4;
+   const x=ax+Math.round(Math.cos(angle)*19),y=ay+10+Math.round(Math.sin(angle)*19);
+   rect(spr,x-1,y-1,3,3,14);
+  }
+  disc(ax,ay+10,14,15,spr);disc(ax-3,ay+7,10,16,spr);
+  rect(spr,ax-18,ay+12,5,4,14);rect(spr,ax+14,ay+12-hand,5,4,14);
+  if(LEVEL>=2){hline(spr,ax-11,ax+11,ay+22,11);rect(spr,ax+9,ay+23,3,4,11);}
+  if(LEVEL>=3){hline(spr,ax-9,ax+9,ay+22,24);hline(spr,ax-7,ax+7,ay+23,11);}
+  if(LEVEL>=4)flower(spr,ax-11,ay,25);
+  if(LEVEL>=5){rect(spr,ax-6,ay-8,13,4,19);rect(spr,ax-6,ay-11,3,3,20);rect(spr,ax-1,ay-13,3,5,20);rect(spr,ax+4,ay-11,3,3,20);}
+ }
+ companionFace();
+}
+function companionFace() {
+ rect(spr,ax-11,ay+14,4,2,17);rect(spr,ax+8,ay+14,4,2,17);
+ if(face===2||blink){hline(spr,ax-7,ax-4,ay+12,0);hline(spr,ax+4,ax+7,ay+12,0);}
+ else if(face===1){line(spr,ax-8,ay+12,ax-6,ay+10,0);line(spr,ax-6,ay+10,ax-4,ay+12,0);line(spr,ax+4,ay+12,ax+6,ay+10,0);line(spr,ax+6,ay+10,ax+8,ay+12,0);}
+ else{rect(spr,ax-7,ay+9,3,5,0);rect(spr,ax+5,ay+9,3,5,0);plot(spr,ax-7,ay+9,12);plot(spr,ax+5,ay+9,12);}
+ if(face===1){rect(spr,ax-2,ay+15,5,3,18);hline(spr,ax-1,ax+1,ay+18,17);}
+ else{plot(spr,ax-2,ay+16,18);hline(spr,ax-1,ax+1,ay+17,18);plot(spr,ax+2,ay+16,18);}
+}
+function drawCompanionUnder() {
+ steppedOval(buf,80,71,17,2,19);
+ if(LEVEL>=5){
+  if(CHARACTER==='ingredients'){disc(124,74,5,23);plot(buf,122,74,0);plot(buf,125,74,0);leaf(buf,124,69);}
+  if(CHARACTER==='cooking'){rect(buf,119,70,11,8,15);rect(buf,130,71,3,5,14);plot(buf,122,74,0);plot(buf,126,74,0);}
+  if(CHARACTER==='laundry'){cloud(buf,116,76);plot(buf,121,74,0);plot(buf,127,74,0);}
+ }
+}
+// #endregion
+
+// #region ENGINE boot
+checkContract();
+buildBackground();
+resize();
+addEventListener('resize', resize);
+const seek = /^#t=(\d+)(?:&crop=(\d+),(\d+),(\d+),(\d+))?$/.exec(location.hash);
+if (seek) {
+  if (seek[2]) {
+    cropX = Math.min(+seek[2], W - 1); cropY = Math.min(+seek[3], H - 1);
+    cropW = Math.max(1, Math.min(+seek[4], W - cropX)); cropH = Math.max(1, Math.min(+seek[5], H - cropY));
+    resize();
+  }
+  // #t=N: simulate and render ticks 0..N (so errors on any of them surface), then hold tick N.
+  // Passing the loop length also checks the seam: the actor at that tick must match tick 0.
+  const loop = DUR.reduce((a, b) => a + b, 0), first = new Uint8Array(N);
+  for (let t = 0, end = +seek[1]; t <= end; t++) {
+    update();
+    render();
+    if (t === 0) first.set(spr);
+    if (t === loop) {
+      let diff = 0;
+      for (let i = 0; i < N; i++) diff += first[i] !== spr[i];
+      if (diff) console.error(`pixel-anims seam: actor differs by ${diff} px between tick 0 and tick ${loop}`);
+    }
+  }
+} else {
+  clock[0] = performance.now();
+  requestAnimationFrame(frame);
+  // Same-origin pages drive the loop through iframe.contentWindow.pixelAnims: pause() holds the frame, play() resumes,
+  // and seek(t, rate) runs `rate` steps a frame forward to tick t of the loop (wrapping), then plays on.
+  const loop = DUR.reduce((a, b) => a + b, 0);
+  window.pixelAnims = Object.freeze({
+    get tick() { return tick; }, loop,
+    get paused() { return ctl[0] === 1; }, get seeking() { return ctl[1] > 0; },
+    pause() { ctl[0] = 1; }, play() { ctl[0] = 0; },
+    seek(t, rate = 10) { ctl[1] = ((t - tick) % loop + loop) % loop; ctl[2] = Math.min(loop, Math.max(1, Math.floor(rate) || 1)); ctl[0] = 0; },
+  });
+}
+// #endregion
+})();
+</script>

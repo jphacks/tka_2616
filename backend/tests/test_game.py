@@ -72,7 +72,7 @@ def test_expired_photo_can_still_finish(client):
     assert client.post(f'/api/sessions/{sid}/confirm').json()['reward_amount'] == 10
 
 def test_ai_completion_idempotent(client, monkeypatch):
-    async def analyze(before, after):
+    async def analyze(before, after, task='dishes'):
         return vision.Analysis(status='likely_done', reason='汚れが減りました。', observed_changes=['汚れが減少'], washing_evidence=['皿の汚れが消えた'], alternative_explanations=[], uncertainties=[])
     monkeypatch.setattr(vision, 'analyze', analyze)
     sid = start(client, True)
@@ -96,3 +96,64 @@ def test_ai_consent_and_attempt_limit(client, monkeypatch):
 def test_duplicate_photos_and_missing_ai():
     import asyncio
     assert asyncio.run(vision.analyze(b'same', b'same')).status == 'uncertain'
+
+
+def test_task_progress_active_sessions_and_daily_limits_are_separate(client):
+    tasks = ['dishes', 'ingredients', 'cooking', 'laundry']
+    active = {}
+    for task in tasks:
+        result = client.post('/api/sessions', files={'image': image()}, data={'task': task}).json()
+        assert result['task'] == task
+        active[task] = result['id']
+    assert len(set(active.values())) == 4
+    for task in tasks:
+        state = client.get('/api/game-state', params={'task': task}).json()
+        assert state['active_session']['id'] == active[task]
+        for i in range(4):
+            sid = active[task] if i == 0 else client.post('/api/sessions', files={'image': image()}, data={'task': task}).json()['id']
+            result = client.post(f'/api/sessions/{sid}/confirm').json()
+            assert result['reward_amount'] == (10 if i < 3 else 0)
+        state = client.get('/api/game-state', params={'task': task}).json()
+        assert state['total_drops'] == 30 and state['pond_level'] == 2
+        history = client.get('/api/sessions', params={'task': task}).json()
+        assert len(history) == 4 and all(row['task'] == task for row in history)
+
+
+def test_cancel_one_character_preserves_others(client):
+    sessions = {}
+    for task in ['dishes', 'ingredients']:
+        sessions[task] = client.post('/api/sessions', files={'image': image()}, data={'task': task}).json()['id']
+    client.delete('/api/sessions/' + sessions['ingredients'])
+    assert client.get('/api/game-state').json()['active_session']['id'] == sessions['dishes']
+    assert client.get('/api/game-state?task=ingredients').json()['active_session'] is None
+
+
+def test_invalid_task_rejected(client):
+    assert client.get('/api/game-state?task=unknown').status_code == 422
+    assert client.get('/api/sessions?task=unknown').status_code == 422
+    assert client.post('/api/sessions', files={'image': image()}, data={'task': 'unknown'}).status_code == 422
+
+
+def test_legacy_database_migration_preserves_awamon(tmp_path, monkeypatch):
+    import sqlite3
+    from fastapi.testclient import TestClient
+    path = tmp_path / 'legacy.sqlite3'
+    with sqlite3.connect(path) as db:
+        db.executescript('''CREATE TABLE sessions (
+          id TEXT PRIMARY KEY, started_at TEXT NOT NULL, completed_at TEXT,
+          status TEXT NOT NULL DEFAULT 'washing', completion_method TEXT,
+          analysis TEXT, before_image BLOB, reward_amount INTEGER NOT NULL DEFAULT 0,
+          reward_day TEXT, consent INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE UNIQUE INDEX one_active ON sessions((1)) WHERE completed_at IS NULL AND status != 'cancelled';
+        INSERT INTO sessions(id,started_at,completed_at,status,reward_amount) VALUES('old-done','2026-10-17','2026-10-17','completed',80);
+        INSERT INTO sessions(id,started_at,status) VALUES('old-active','2026-10-17','washing');''')
+    monkeypatch.setattr(main, 'DB_PATH', path)
+    with TestClient(main.app) as migrated:
+        state = migrated.get('/api/game-state').json()
+        assert state['total_drops'] == 80 and state['pond_level'] == 3
+        assert state['active_session']['id'] == 'old-active'
+        assert migrated.get('/api/game-state?task=cooking').json()['total_drops'] == 0
+        assert migrated.post('/api/sessions', files={'image': image()}, data={'task': 'cooking'}).status_code == 200
+        main.initialize()  # migration is repeatable with multiple active characters
+        assert migrated.get('/api/game-state').json()['total_drops'] == 80

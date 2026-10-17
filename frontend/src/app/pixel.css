@@ -62,3 +62,17 @@ main{padding-top:24px}.page-heading{gap:12px;margin-bottom:20px;align-items:cent
 .scene-viewport{position:relative;display:flex;justify-content:center;align-items:center;overflow:hidden;flex-shrink:0}
 .pond-speech{position:relative;left:auto;bottom:auto;transform:none;align-self:center;margin:10px 12px 14px;white-space:normal;text-align:center;max-width:calc(100% - 24px)}
 .scene-viewport .pet-touch{top:calc(53% - 36px)}
+/* Family picker and gently differentiated task worlds. */
+.header-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.character-switch{min-height:44px;padding:8px;border:2px solid #8fa9bc;background:#d7e9f3;color:#405570;box-shadow:inset 2px 2px #f8f7ec;font-size:12px}
+.character-picker>p{font-size:13px;line-height:1.9;color:#697c8b;margin-bottom:16px}
+.character-options{display:grid;gap:12px}.character-options button{display:flex;gap:12px;align-items:center;text-align:left;padding:12px;border:2px solid #b1bec5;background:#f9f5e8;min-width:0;box-shadow:inset 2px 2px #fff9ea}
+.character-options button[aria-pressed=true]{border-color:#668baa;background:#dcebf2}.character-options img{image-rendering:pixelated;flex-shrink:0}.character-options button>span{min-width:0;flex:1}.character-options strong{font-size:19px;display:block}.character-options small{font-size:12px;display:block;margin:3px 0;color:#718599}.character-options button>span>span{font-size:11px;line-height:1.8;display:block}.character-options b{font-size:18px;font-weight:400}
+.app-shell[data-character=ingredients]{--blue:#eadfc4;--frame:#a6ad8b;--green:#718b69;background:#f4f1e2}
+.app-shell[data-character=cooking]{--blue:#eed7d4;--frame:#b49ba7;--green:#967088;background:#f8eee5}
+.app-shell[data-character=laundry]{--blue:#f3e3b7;--frame:#b4aa83;--green:#947d4d;background:#f9f2de}
+.app-shell:not([data-character=dishes]) .pond-title,.app-shell:not([data-character=dishes]) .character-switch{background:var(--blue);border-color:var(--frame)}
+.app-shell:not([data-character=dishes]) .primary{background:var(--blue);border-color:var(--frame);box-shadow:inset 2px 2px #fff9ea,3px 3px #d4d3c6}
+.app-shell[data-character=ingredients] .pixel-pond,.app-shell[data-character=cooking] .pixel-pond{background:#f5efdf}
+.app-shell .pixel-pond.night{background:#778ba9}
+@media(max-width:599px){.header .help{font-size:0;gap:0;width:36px;min-height:44px;padding:6px;justify-content:center}.header .help span{font-size:16px}.brand{font-size:22px;letter-spacing:1px}.brand small{font-size:8px}.header-actions{gap:4px}.character-switch{font-size:11px;padding:6px}.brand-mark{width:32px}.character-options button{gap:8px;padding:10px}.character-options img{width:56px;height:56px}}

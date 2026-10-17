@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from PIL import Image, ImageOps, UnidentifiedImageError
 from . import vision
+from .tasks import Task
 
 load_dotenv()
 DB_PATH = Path(os.getenv('AWAMON_DB', 'data/awamon.sqlite3'))
@@ -46,8 +47,15 @@ def initialize():
           analysis TEXT, before_image BLOB, reward_amount INTEGER NOT NULL DEFAULT 0,
           reward_day TEXT, consent INTEGER NOT NULL DEFAULT 0, attempts INTEGER NOT NULL DEFAULT 0
         );
-        CREATE UNIQUE INDEX IF NOT EXISTS one_active ON sessions((1)) WHERE completed_at IS NULL AND status != 'cancelled';
+
         ''')
+        # In-place migration: old rows belong to Awamon, no reset of rewards or history.
+        db.execute('BEGIN IMMEDIATE')
+        columns = {row['name'] for row in db.execute('PRAGMA table_info(sessions)')}
+        if 'task' not in columns:
+            db.execute("ALTER TABLE sessions ADD COLUMN task TEXT NOT NULL DEFAULT 'dishes'")
+        db.execute('DROP INDEX IF EXISTS one_active')
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS one_active_task ON sessions(task) WHERE completed_at IS NULL AND status != 'cancelled'")
     cleanup()
 
 def cleanup():
@@ -86,7 +94,7 @@ def get_session(db, session_id):
     return row
 
 def public(row):
-    value = {k: row[k] for k in ['id', 'started_at', 'completed_at', 'status', 'completion_method', 'reward_amount']}
+    value = {k: row[k] for k in ['id', 'started_at', 'completed_at', 'status', 'completion_method', 'reward_amount', 'task']}
     value['analysis'] = json.loads(row['analysis']) if row['analysis'] else None
     return value
 
@@ -114,37 +122,37 @@ def grant(db, session_id, method):
     if row['completed_at']:
         return public(row)
     day = datetime.now(JST).date().isoformat()
-    count = db.execute('SELECT COUNT(*) FROM sessions WHERE reward_day=? AND reward_amount>0', (day,)).fetchone()[0]
+    count = db.execute('SELECT COUNT(*) FROM sessions WHERE reward_day=? AND reward_amount>0 AND task=?', (day, row['task'])).fetchone()[0]
     reward = 10 if count < 3 else 0
     db.execute("UPDATE sessions SET status='completed',completed_at=?,completion_method=?,reward_amount=?,reward_day=?,before_image=NULL WHERE id=?", (now(), method, reward, day, session_id))
     return public(get_session(db, session_id))
 
 @app.get('/api/game-state')
-def state():
+def state(task: Task = 'dishes'):
     cleanup()
     with database() as db:
-        total = db.execute('SELECT COALESCE(SUM(reward_amount),0) FROM sessions').fetchone()[0]
-        count = db.execute('SELECT COUNT(*) FROM sessions WHERE completed_at IS NOT NULL').fetchone()[0]
-        active = db.execute("SELECT * FROM sessions WHERE completed_at IS NULL AND status!='cancelled' LIMIT 1").fetchone()
-        today = db.execute('SELECT COUNT(*) FROM sessions WHERE reward_day=? AND reward_amount>0', (datetime.now(JST).date().isoformat(),)).fetchone()[0]
+        total = db.execute('SELECT COALESCE(SUM(reward_amount),0) FROM sessions WHERE task=?', (task,)).fetchone()[0]
+        count = db.execute('SELECT COUNT(*) FROM sessions WHERE completed_at IS NOT NULL AND task=?', (task,)).fetchone()[0]
+        active = db.execute("SELECT * FROM sessions WHERE completed_at IS NULL AND status!='cancelled' AND task=? LIMIT 1", (task,)).fetchone()
+        today = db.execute('SELECT COUNT(*) FROM sessions WHERE reward_day=? AND reward_amount>0 AND task=?', (datetime.now(JST).date().isoformat(), task)).fetchone()[0]
     level = sum(total >= threshold for threshold in LEVELS)
-    return {'total_drops': total, 'pond_level': level, 'next_level_at': LEVELS[level] if level < 5 else None, 'completed_count': count, 'today_rewards': today, 'active_session': public(active) if active else None, 'ai_enabled': vision.enabled()}
+    return {'task': task, 'total_drops': total, 'pond_level': level, 'next_level_at': LEVELS[level] if level < 5 else None, 'completed_count': count, 'today_rewards': today, 'active_session': public(active) if active else None, 'ai_enabled': vision.enabled()}
 
 @app.get('/api/sessions')
-def history():
+def history(task: Task = 'dishes'):
     with database() as db:
-        return [public(row) for row in db.execute('SELECT * FROM sessions WHERE completed_at IS NOT NULL ORDER BY completed_at DESC LIMIT 50')]
+        return [public(row) for row in db.execute('SELECT * FROM sessions WHERE completed_at IS NOT NULL AND task=? ORDER BY completed_at DESC LIMIT 50', (task,))]
 
 @app.post('/api/sessions')
-async def start(image: UploadFile = File(...), consent: bool = Form(False)):
+async def start(image: UploadFile = File(...), consent: bool = Form(False), task: Task = Form('dishes')):
     data = await photo(image)
     with database() as db:
         db.execute('BEGIN IMMEDIATE')
-        active = db.execute("SELECT * FROM sessions WHERE completed_at IS NULL AND status!='cancelled' LIMIT 1").fetchone()
+        active = db.execute("SELECT * FROM sessions WHERE completed_at IS NULL AND status!='cancelled' AND task=? LIMIT 1", (task,)).fetchone()
         if active:
             return public(active)
         session_id = str(uuid4())
-        db.execute('INSERT INTO sessions(id,started_at,before_image,consent) VALUES(?,?,?,?)', (session_id, now(), data, int(consent)))
+        db.execute('INSERT INTO sessions(id,started_at,before_image,consent,task) VALUES(?,?,?,?,?)', (session_id, now(), data, int(consent), task))
         return public(get_session(db, session_id))
 
 @app.post('/api/sessions/{session_id}/complete')
@@ -161,13 +169,13 @@ async def complete(session_id: str, image: UploadFile = File(...)):
         if row['attempts'] >= 5:
             raise HTTPException(429, '写真の確認は5回までです。自分で完了を記録できます。')
         db.execute('UPDATE sessions SET attempts=attempts+1 WHERE id=?', (session_id,))
-        before, consent = row['before_image'], row['consent']
+        before, consent, task = row['before_image'], row['consent'], row['task']
     if not before:
         analysis = vision.fallback('保存期限を過ぎたため写真を削除しました。自分で完了を記録できます。')
     elif not consent:
         analysis = vision.fallback('写真をAIへ送信せず、自分で完了を記録できます。')
     else:
-        analysis = await vision.analyze(before, data)
+        analysis = await vision.analyze(before, data, task)
     with database() as db:
         db.execute('BEGIN IMMEDIATE')
         row = get_session(db, session_id)

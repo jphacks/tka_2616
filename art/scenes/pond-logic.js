@@ -53,6 +53,7 @@ function buildBackground() {
     rect(bg,119,35,16,14,19);rect(bg,117,33,20,3,18);rect(bg,120,30,14,3,18);rect(bg,123,27,8,3,18);
     rect(bg,125,40,5,9,0);rect(bg,120,38,3,3,21);
   }
+  if(CHARACTER!=='dishes')buildCompanionBackground();
   sample();
 }
 function step() {
@@ -81,6 +82,7 @@ function sample() {
   srcX=ax;srcY=ay-5;rim=0;
 }
 function drawActor() {
+  if(CHARACTER!=='dishes'){drawCompanion();return;}
   // Short arms, closed silhouette, cream highlight from upper left.
   rect(spr,ax-18,ay+12,6,5,14);rect(spr,ax+13,ay+12-hand,6,5,14);
   hline(spr,ax-17,ax-15,ay+12,16);hline(spr,ax+15,ax+17,ay+12-hand,16);
@@ -111,6 +113,7 @@ function drawActor() {
   if(LEVEL>=5){rect(spr,ax-10,ay+20,21,2,19);plot(spr,ax,ay+20,21);}
 }
 function drawUnder() {
+  if(CHARACTER!=='dishes'){drawCompanionUnder();return;}
   // Contact ripple and slow water glints stay separate from the character.
   hline(buf,ax-15,ax+15,67,9);hline(buf,ax-11,ax+11,68,11);
   hline(buf,42+ambient,47+ambient,62,12);hline(buf,102-ambient,108-ambient,72,12);

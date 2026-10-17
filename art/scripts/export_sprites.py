@@ -1,11 +1,14 @@
 """Encode the scene's original indexed actor buffers as transparent PNG sheets."""
 import json
+import sys
 from pathlib import Path
 from PIL import Image
 ROOT=Path(__file__).resolve().parents[2]
-data=json.loads((ROOT/'art/exports/frames.json').read_text())
+character=sys.argv[1] if len(sys.argv)>1 else 'dishes'
+assert character in ('dishes','ingredients','cooking','laundry')
+data=json.loads((ROOT/f'art/exports/frames-{character}.json').read_text())
 palette=[tuple(bytes.fromhex(c[1:]))+(255,) for c in data['palette']]
-out=ROOT/'frontend/public/assets/awamon/pixel';out.mkdir(parents=True,exist_ok=True)
+out=ROOT/('frontend/public/assets/awamon/pixel' if character=='dishes' else f'frontend/public/assets/{character}/pixel');out.mkdir(parents=True,exist_ok=True)
 preview=Image.new('RGB',(5*128,len(data['states'])*144),'#f5efdf')
 for row,(mode,levels) in enumerate(data['states'].items()):
     for level,frames in enumerate(levels,1):
@@ -23,5 +26,5 @@ for row,(mode,levels) in enumerate(data['states'].items()):
                 if mode=='idle':frame.save(out/f'form-{level}.png')
         sheet.save(out/f'{mode}-{level}.png')
 (out/'metadata.json').write_text(json.dumps({'size':[64,64],'frames':20,'frame_ms':200,'anchor':[32,48],'states':list(data['states']),'levels':5,'palette':data['palette']},indent=2)+'\n')
-preview.save(ROOT/'art/exports/motions-and-forms.png')
+preview.save(ROOT/('art/exports/motions-and-forms.png' if character=='dishes' else f'art/exports/{character}-motions-and-forms.png'))
 print(f"{len(data['states'])*5} spritesheets, 5 evolution portraits, and animation contact sheet exported.")
