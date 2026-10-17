@@ -83,13 +83,19 @@ function sample() {
 }
 function drawActor() {
   if(CHARACTER!=='dishes'){drawCompanion();return;}
+  // Distinct silhouettes: foam child, droplet ears, swimming tail, lotus, pond guardian.
+  if(LEVEL===2){capsule(spr,ax-10,ay+2,4,ax-15,ay-10,1,14,15,16);capsule(spr,ax+10,ay+2,4,ax+15,ay-10,1,14,15,16);}
+  if(LEVEL===3){capsule(spr,ax+8,ay+19,6,ax+23,ay+17+sway,3,14,15,16);line(spr,ax+22,ay+17+sway,ax+27,ay+11+sway,15);line(spr,ax+22,ay+17+sway,ax+28,ay+21+sway,15);}
+  if(LEVEL===4){for(let i=-2;i<=2;i++)steppedOval(spr,ax+i*8,ay+20-Math.abs(i)*3,7,6, i%2===0?24:25);}
+  if(LEVEL===5){capsule(spr,ax-11,ay+13,6,ax-23,ay+23,3,13,14,15);capsule(spr,ax+11,ay+13,6,ax+23,ay+23,3,13,14,15);disc(ax-9,ay-6,5,15,spr);disc(ax+9,ay-6,5,15,spr);disc(ax,ay-10,5,16,spr);}
   // Short arms, closed silhouette, cream highlight from upper left.
   rect(spr,ax-18,ay+12,6,5,14);rect(spr,ax+13,ay+12-hand,6,5,14);
   hline(spr,ax-17,ax-15,ay+12,16);hline(spr,ax+15,ax+17,ay+12-hand,16);
   // Signature two foam bubbles preserve the original prototype's identity.
   disc(ax-8,ay,4,14,spr);disc(ax+7,ay-4,4,15,spr);hline(spr,ax+6,ax+8,ay-6,16);
   for(let row=0;row<BODY.length/2;row++) {
-    const left=BODY[row*2],right=BODY[row*2+1];
+    const expansion=LEVEL===5?3:LEVEL===3?-1:0;
+    const left=BODY[row*2]-expansion,right=BODY[row*2+1]+expansion;
     for(let x=left;x<=right;x++) {
       let c=15;
       if(row>15 || x>10)c=14;
@@ -107,9 +113,9 @@ function drawActor() {
   if(face===1){rect(spr,ax-2,ay+15,5,3,18);hline(spr,ax-1,ax+1,ay+18,17);}
   else if(face===2){hline(spr,ax-1,ax+1,ay+17,18);}
   else {plot(spr,ax-2,ay+16,18);hline(spr,ax-1,ax+1,ay+17,18);plot(spr,ax+2,ay+16,18);}
-  if(LEVEL>=2)leaf(spr,ax-1,ay-1);
-  if(LEVEL>=3){leaf(spr,ax-4,ay-2);line(spr,ax-3,ay-5,ax-8,ay-8,22);hline(spr,ax-9,ax-5,ay-8,23);}
-  if(LEVEL>=4){flower(spr,ax-7,ay-2,24);flower(spr,ax+1,ay-4,25);flower(spr,ax+9,ay-1,21);}
+  if(LEVEL===2)leaf(spr,ax-1,ay-1);
+  if(LEVEL===3){leaf(spr,ax-4,ay-2);line(spr,ax-3,ay-5,ax-8,ay-8,22);hline(spr,ax-9,ax-5,ay-8,23);}
+  if(LEVEL===4){flower(spr,ax-7,ay-2,24);flower(spr,ax+1,ay-4,25);flower(spr,ax+9,ay-1,21);}
   if(LEVEL>=5){rect(spr,ax-10,ay+20,21,2,19);plot(spr,ax,ay+20,21);}
 }
 function drawUnder() {

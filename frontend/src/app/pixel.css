@@ -76,3 +76,6 @@ main{padding-top:24px}.page-heading{gap:12px;margin-bottom:20px;align-items:cent
 .app-shell[data-character=ingredients] .pixel-pond,.app-shell[data-character=cooking] .pixel-pond{background:#f5efdf}
 .app-shell .pixel-pond.night{background:#778ba9}
 @media(max-width:599px){.header .help{font-size:0;gap:0;width:36px;min-height:44px;padding:6px;justify-content:center}.header .help span{font-size:16px}.brand{font-size:22px;letter-spacing:1px}.brand small{font-size:8px}.header-actions{gap:4px}.character-switch{font-size:11px;padding:6px}.brand-mark{width:32px}.character-options button{gap:8px;padding:10px}.character-options img{width:56px;height:56px}}
+
+.sound-settings{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin:16px 0;padding:12px;border:2px solid var(--line);background:var(--paper);font-size:12px}.sound-settings button{min-height:44px;padding:8px 12px;border:2px solid var(--line);background:var(--paper);color:inherit;font:inherit;cursor:pointer}.sound-settings button[aria-pressed=true]{background:#cce9ed}.sound-settings button:disabled{opacity:.45;cursor:default}.sound-settings span{flex:1;min-width:130px}
+@media(min-width:900px){.sound-settings{width:calc(100% - 348px)}}

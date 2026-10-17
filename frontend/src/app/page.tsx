@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import PondScene, { type Motion } from '@/components/PondScene';
 import DevelopmentPanel from '@/components/DevelopmentPanel';
 import AwamonSprite from '@/components/AwamonSprite';
+import { usePetSound } from '@/hooks/usePetSound';
 import CharacterPicker from '@/components/CharacterPicker';
 import { characters, characterIds, type CharacterId } from '@/lib/characters';
 
@@ -48,6 +49,7 @@ export default function App() {
 }
 function Home({ character, onCharacter }: { character: CharacterId; onCharacter: (id: CharacterId) => void }) {
   const profile = characters[character];
+  const sound = usePetSound(character);
   const names = profile.worlds;
   const [picker, setPicker] = useState(false);
   useEffect(() => { document.title = `${profile.name}｜ひとつできたら、ちいさな幸せ。`; }, [profile.name]);
@@ -82,14 +84,16 @@ function Home({ character, onCharacter }: { character: CharacterId; onCharacter:
   useEffect(() => { if (step || guide) dialog.current?.showModal(); else dialog.current?.close(); }, [step, guide]);
   useEffect(() => { if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') navigator.serviceWorker.register('/sw.js').catch(() => {}); }, []);
   useEffect(() => { content.current?.scrollTo({ top: 0 }); }, [tab]);
-  function pet() { setReplay(v => v + 1); setPaused(false); setHappy(true); if (timer.current) clearTimeout(timer.current); timer.current = setTimeout(() => setHappy(false), 4000); }
+  function pet(cue: 'voice' | 'complete' = 'voice') { void sound.play(cue); setReplay(v => v + 1); setPaused(false); setHappy(true); if (timer.current) clearTimeout(timer.current); timer.current = setTimeout(() => setHappy(false), 4000); }
   async function action(fn: () => Promise<void>) {
     if (lock.current) return;
+    void sound.unlock();
     lock.current = true; setBusy(true); setError('');
     try { await fn(); } catch (e) { setError(e instanceof Error ? e.message : 'もう一度試してください。'); }
     finally { lock.current = false; setBusy(false); }
   }
   function begin() {
+    void sound.unlock();
     setError(''); setPhoto(null);
     if (game?.active_session) { setSession(game.active_session); setStep(game.active_session.analysis ? 'result' : 'wash'); }
     else { setSession(null); setStep('before'); }
@@ -101,14 +105,14 @@ function Home({ character, onCharacter }: { character: CharacterId; onCharacter:
       const result = await api<Session>(step === 'before' ? '/sessions' : `/sessions/${session!.id}/complete`, { method: 'POST', body: form });
       setSession(result); setPhoto(null);
       setStep(result.completed_at ? 'reward' : step === 'before' ? 'wash' : 'result');
-      if (result.completed_at) pet();
+      if (result.completed_at) pet('complete');
       await refresh();
     });
   }
   async function confirm() {
     await action(async () => {
       const result = await api<Session>(`/sessions/${session!.id}/confirm`, { method: 'POST' });
-      setSession(result); setStep('reward'); pet(); await refresh();
+      setSession(result); setStep('reward'); pet('complete'); await refresh();
     });
   }
   function close() { if (busy) return; setStep(null); setGuide(false); setError(''); setPhoto(null); }
@@ -116,10 +120,10 @@ function Home({ character, onCharacter }: { character: CharacterId; onCharacter:
   const displayLevel = previewLevel ?? level;
   useEffect(() => {
     if (!game) return;
-    if (previousLevel.current !== null && game.pond_level > previousLevel.current) { setMotion('grow'); setReplay(v => v + 1); }
+    if (previousLevel.current !== null && game.pond_level > previousLevel.current) { void sound.play('grow'); setMotion('grow'); setReplay(v => v + 1); }
     previousLevel.current = game.pond_level;
   }, [game]);
-  function chooseMotion(next: Motion) { if (timer.current) clearTimeout(timer.current); setHappy(false); setMotion(next); setPaused(false); setReplay(v => v + 1); }
+  function chooseMotion(next: Motion) { if (next !== 'idle') void sound.play(next === 'grow' || next === 'bubble' || next === 'sleep' || next === 'dance' ? next : 'voice'); if (timer.current) clearTimeout(timer.current); setHappy(false); setMotion(next); setPaused(false); setReplay(v => v + 1); }
   function chooseLevel(next: number) { setPreviewLevel(next); chooseMotion('grow'); }
   function resetPreview() { setPreviewLevel(null); setNight(false); setPaused(false); chooseMotion('idle'); }
   const total = game?.total_drops || 0;
@@ -132,9 +136,10 @@ function Home({ character, onCharacter }: { character: CharacterId; onCharacter:
         <div className="page-heading"><div><p className="eyebrow">SAVE A LITTLE HAPPINESS</p><h1>{tab === 'pond' ? 'おかえりなさい。' : 'おもいでノート'}</h1><p>{tab === 'pond' ? `今日も、きみのペースで。${profile.name}が待っているよ。` : `ひとつひとつの「できた！」が、${profile.place}を育てています。`}</p></div><div className="drop-balance"><Icon name="drop"/><strong>{game ? total : '—'}</strong><span>{profile.unit}</span></div></div>
         {!step && !guide && error && <div role="alert" className="error">{error}<button onClick={() => action(async () => { await refresh(); })}>再接続</button></div>}
         {tab === 'pond' ? <>
-          <section className="pond-card" aria-label={profile.nav}><div className="pond-title"><div><span className="level-tag">Lv.{displayLevel}</span><h2>{names[displayLevel - 1]}</h2></div><span className="live-tag">{previewLevel !== null ? 'おためし' : 'MY LITTLE POND'}<i/><i/></span></div><PondScene character={character} level={displayLevel} happy={happy} onPet={pet} motion={motion} night={night} paused={paused} replay={replay} suspended={Boolean(step || guide || picker)}/><div className="pond-footer"><span><span className="status-dot"/>{profile.forms[displayLevel - 1]}</span><span>{profile.name}をタップしてみてね</span></div></section>
+          <section className="pond-card" aria-label={profile.nav}><div className="pond-title"><div><span className="level-tag">Lv.{displayLevel}</span><h2>{names[displayLevel - 1]}</h2></div><span className="live-tag">{previewLevel !== null ? 'おためし' : 'MY LITTLE POND'}<i/><i/></span></div><PondScene character={character} level={displayLevel} happy={happy} onPet={() => pet()} motion={motion} night={night} paused={paused} replay={replay} suspended={Boolean(step || guide || picker)}/><div className="pond-footer"><span><span className="status-dot"/>{profile.forms[displayLevel - 1]}</span><span>{profile.name}をタップしてみてね</span></div></section>
           <div className="bottom-grid"><section className="wash-card"><div className="card-label"><Icon name="camera"/><span>いつもの{profile.task}を、ちょっと楽しく。</span></div><h2>{game?.active_session ? '続きから、はじめよう。' : profile.catchphrase}</h2><p>はじめる前と、できた後をパシャリ。<br/>がんばった分だけ、ちいさな世界が育ちます。</p><button className="primary" disabled={!game || busy} onClick={begin}><Icon name="camera"/>{game?.active_session ? `${profile.task}を再開する` : profile.action}<Icon name="arrow"/></button><div className="reward-note"><span><Icon name="drop"/> 1回で10{profile.unit}</span><span>今日のごほうび {game?.today_rewards || 0} / 3回</span></div></section>
           <section className="growth-card"><div className="card-label"><Icon name="leaf"/><span>{profile.place}の成長</span></div><h2>{level < 5 ? '次の景色まで、あと少し。' : 'にぎやかになったね。'}</h2><div className="growth-destination"><div className="plant-art" aria-hidden="true">{level < 3 ? '♧' : '✿'}</div><div><small>{level < 5 ? `NEXT · LEVEL ${level + 1}` : 'LEVEL 5 · COMPLETE'}</small><strong>{names[Math.min(level, 4)]}</strong></div></div><div className="progress-label"><span>{level < 5 ? `あと ${(game?.next_level_at || 30) - total} ${profile.unit}` : 'これからも、いっしょに。'}</span><span>{total} / {game?.next_level_at || 250}</span></div><div className="progress" role="progressbar" aria-label="次の景色までの成長" aria-valuenow={Math.round(progress)} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${progress}%` }}/></div><p className="soft-note">お休みしても、成長はそのまま。<br/>少しずつ、いっしょに育とう。</p></section></div>
+          <div className="sound-settings"><button type="button" aria-pressed={sound.enabled} onClick={sound.toggle}>♪ 音 {sound.enabled ? 'ON' : 'OFF'}</button><span>{sound.unavailable ? 'このブラウザでは音を再生できませんでした' : 'ちいさな鳴き声と効果音'}</span><button type="button" disabled={!sound.enabled} onClick={() => { void sound.play('voice'); }}>声をきく</button></div>
           <DevelopmentPanel character={character} level={displayLevel} preview={previewLevel !== null || motion !== 'idle' || night} motion={happy ? 'happy' : motion} night={night} paused={paused} onLevel={chooseLevel} onMotion={chooseMotion} onNight={() => setNight(v => !v)} onPause={() => setPaused(v => !v)} onReplay={() => { setPaused(false); setReplay(v => v + 1); }} onReset={resetPreview}/>
           <section className="memory-strip"><span className="memory-icon"><Icon name="book"/></span><div><h3>{history.length ? 'またひとつ、できたね。' : '最初のおもいでは、これから。'}</h3><p>{history.length ? `これまで ${game?.completed_count} 回の${profile.task}を記録しました。` : '作業を終えると、ここに日々の足あとが残ります。'}</p></div><button aria-label="おもいでノートを開く" onClick={() => setTab('journal')}>→</button></section>
         </> : <section className="journal">{history.length ? history.map(s => <article key={s.id}><span className="journal-icon"><Icon name="drop"/></span><div><time>{new Date(s.completed_at!).toLocaleString('ja-JP', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time><h3>{profile.completed}</h3><p>{s.completion_method === 'ai' ? '写真の変化から記録' : '自分で完了を記録'}</p></div><strong>+{s.reward_amount}<small>{profile.unit}</small></strong></article>) : <div className="empty"><AwamonSprite character={character} level={level}/><h2>最初の1ページを、いっしょに。</h2><p>{profile.task}の記録がここに並びます。</p><button className="primary" disabled={!game} onClick={begin}>{profile.action}</button></div>}</section>}

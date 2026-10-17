@@ -41,9 +41,13 @@ function buildCompanionBackground() {
 }
 function drawCompanion() {
  if(CHARACTER==='ingredients') {
-  // Rounded carrot: broad cheeks, gently tapered root, leafy crown.
+  // Each stage changes the silhouette: root, sprout, leaf cloak, bloom, harvest spirit.
+  if(LEVEL===3){steppedOval(spr,ax-12,ay+12,10,13,22);steppedOval(spr,ax+12,ay+12,10,13,23);}
+  if(LEVEL===4){for(let i=0;i<8;i++){const a=i*Math.PI/4;disc(ax+Math.round(Math.cos(a)*16),ay+9+Math.round(Math.sin(a)*16),6,25,spr);}}
+  if(LEVEL===5){steppedOval(spr,ax,ay+13,23,15,22);steppedOval(spr,ax,ay+11,21,13,23);leaf(spr,ax-19,ay+3);leaf(spr,ax+17,ay+4);}
+  // Rounded carrot with stage-specific root proportions.
   for(let row=0;row<26;row++) {
-   const half=row<5?8+row:row<14?13:Math.max(2,13-(row-13));
+   const half=LEVEL===1 ? (row<5?6+row:Math.max(1,11-Math.max(0,row-10))) : LEVEL===4 ? Math.max(3,Math.floor(13*Math.sqrt(Math.max(0,1-((row-12)/14)**2)))) : row<5?8+row:row<14?13:Math.max(2,13-(row-13));
    for(let x=-half;x<=half;x++)plot(spr,ax+x,ay+row,x>7||row>20?14:x<0&&row<11?16:15);
   }
   rect(spr,ax-17,ay+12,5,4,14);rect(spr,ax+13,ay+12-hand,5,4,14);
@@ -54,18 +58,26 @@ function drawCompanion() {
   if(LEVEL>=4)flower(spr,ax-7,ay-3,25);
   if(LEVEL>=5){flower(spr,ax+4,ay-5,21);plot(spr,ax,ay+19,21);}
  } else if(CHARACTER==='cooking') {
-  // Enamel pot: lid, short handles, rounded base. Face stays on the pot, never the lid.
+  // Pot grows into a steamer, a round casserole, then a tiny walking kitchen.
+  if(LEVEL===5){rect(spr,ax-23,ay+17,47,12,19);rect(spr,ax-21,ay+19,43,8,1);disc(ax-16,ay+29,3,13,spr);disc(ax+16,ay+29,3,13,spr);rect(spr,ax-23,ay-12,3,30,19);rect(spr,ax+21,ay-12,3,30,19);rect(spr,ax-25,ay-15,51,5,17);for(let i=0;i<5;i++)rect(spr,ax-25+i*10,ay-15,5,5,12);}
+  if(LEVEL===3){rect(spr,ax-13,ay-8,27,10,19);hline(spr,ax-13,ax+13,ay-5,13);hline(spr,ax-13,ax+13,ay-1,13);for(let i=0;i<5;i++)rect(spr,ax-10+i*5,ay-7,2,2,21);}
+  if(LEVEL===4){steppedOval(spr,ax,ay+12,20,14,14);steppedOval(spr,ax-2,ay+10,17,12,15);}
+  // Face stays on the pot, never the lid.
   rect(spr,ax-14,ay+4,29,15,15);rect(spr,ax-12,ay+19,25,3,14);
   rect(spr,ax-14,ay+4,5,13,16);hline(spr,ax-12,ax+12,ay+4,16);
   rect(spr,ax-20,ay+9,6,5,13);rect(spr,ax-19,ay+10,4,2,16);
   rect(spr,ax+15,ay+9-hand,6,5,13);rect(spr,ax+16,ay+10-hand,4,2,16);
   rect(spr,ax-16,ay+1,33,3,13);rect(spr,ax-13,ay-1,27,3,15);rect(spr,ax-3,ay-4,7,3,13);
   if(LEVEL>=2){line2(spr,ax-19,ay+11,ax-22,ay-2,19,13);disc(ax-22,ay-3,2,19,spr);}
-  if(LEVEL>=3){rect(spr,ax-6,ay-9,13,6,12);disc(ax-5,ay-10,3,12,spr);disc(ax+1,ay-12,4,12,spr);disc(ax+6,ay-10,3,12,spr);hline(spr,ax-5,ax+5,ay-5,11);}
+  if(LEVEL===4){rect(spr,ax-6,ay-9,13,6,12);disc(ax-5,ay-10,3,12,spr);disc(ax+1,ay-12,4,12,spr);disc(ax+6,ay-10,3,12,spr);hline(spr,ax-5,ax+5,ay-5,11);}
   if(LEVEL>=4){rect(spr,ax-9,ay+19,19,2,19);plot(spr,ax,ay+19,21);}
   if(LEVEL>=5){flower(spr,ax+11,ay+2,21);hline(spr,ax-13,ax+12,ay+21,19);}
  } else {
-  // Soft sun: eight separate warm rays and a cream face.
+  // Cloud rider, rainbow wings, flower sun, and a radiant sky guardian.
+  if(LEVEL===2){disc(ax-12,ay+23,7,11,spr);disc(ax+12,ay+23,7,11,spr);steppedOval(spr,ax,ay+25,20,5,12);}
+  if(LEVEL===3){for(let side=-1;side<=1;side+=2){steppedOval(spr,ax+side*18,ay+12,10,11,24);steppedOval(spr,ax+side*18,ay+13,8,8,20);steppedOval(spr,ax+side*18,ay+14,6,5,11);}}
+  if(LEVEL>=4){for(let i=0;i<10;i++){const a=i*Math.PI/5;disc(ax+Math.round(Math.cos(a)*18),ay+10+Math.round(Math.sin(a)*18),LEVEL===4?5:3,LEVEL===4?20:12,spr);}}
+  // Soft sun with a cream face.
   for(let i=0;i<8;i++) {
    const angle=i*Math.PI/4;
    const x=ax+Math.round(Math.cos(angle)*19),y=ay+10+Math.round(Math.sin(angle)*19);
@@ -75,7 +87,7 @@ function drawCompanion() {
   rect(spr,ax-18,ay+12,5,4,14);rect(spr,ax+14,ay+12-hand,5,4,14);
   if(LEVEL>=2){hline(spr,ax-11,ax+11,ay+22,11);rect(spr,ax+9,ay+23,3,4,11);}
   if(LEVEL>=3){hline(spr,ax-9,ax+9,ay+22,24);hline(spr,ax-7,ax+7,ay+23,11);}
-  if(LEVEL>=4)flower(spr,ax-11,ay,25);
+  if(LEVEL===4)flower(spr,ax-11,ay,25);
   if(LEVEL>=5){rect(spr,ax-6,ay-8,13,4,19);rect(spr,ax-6,ay-11,3,3,20);rect(spr,ax-1,ay-13,3,5,20);rect(spr,ax+4,ay-11,3,3,20);}
  }
  companionFace();
