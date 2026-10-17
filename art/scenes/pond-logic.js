@@ -75,7 +75,9 @@ function sample() {
   beat=Math.floor((tick+240)%240/6);blink=beat===7||beat===8;
   sway=Math.round(Math.sin((tick+240)%240*Math.PI/120));
   ambient=Math.floor(((tick+240)%240)/24);
-  if(calm){ay=41;hand=MODE==='wave'?5:0;face=MODE==='sleep'?2:MODE==='happy'||MODE==='grow'?1:0;shine=0;sway=0;blink=0;ambient=0;}
+  playActive=state===2?1:0;playBeat=playActive?Math.floor(stT/6):0;
+  if(MODE==='dance' && playActive){ax+=Math.round(Math.sin(playBeat*Math.PI/3)*4);ay-=Math.round(Math.abs(Math.sin(playBeat*Math.PI/3))*3);hand=playBeat%4<2?4:1;}
+  if(calm){ay=41;hand=MODE==='wave'?5:0;face=MODE==='sleep'?2:MODE==='happy'||MODE==='grow'?1:0;shine=0;sway=0;blink=0;ambient=0;ax=80;playActive=0;playBeat=0;}
   srcX=ax;srcY=ay-5;rim=0;
 }
 function drawActor() {
@@ -124,6 +126,19 @@ function drawOver() {
     const x=ax+20,y=ay-2-sway;
     hline(buf,x,x+3,y,12);line(buf,x+3,y,x,y+3,12);hline(buf,x,x+3,y+3,12);
     hline(buf,x+7,x+11,y-7,12);line(buf,x+11,y-7,x+7,y-3,12);hline(buf,x+7,x+11,y-3,12);
+  }
+  if(MODE==='bubble' && playActive) {
+    // Three clean outlined bubbles rise outside the face; sampled integer positions.
+    for(let i=0;i<3;i++) {
+      const bx=ax+22+i*5,by=ay+10-playBeat*2-i*5,r=2+i%2;
+      ring(bx,by,r,9);plot(buf,bx-1,by-1,12);
+    }
+  }
+  if(MODE==='dance' && playActive) {
+    // A pair of pixel musical notes, kept clear of the silhouette.
+    rect(buf,ax-25,ay+2-playBeat%3,2,7,18);rect(buf,ax-28,ay+8-playBeat%3,4,2,18);
+    hline(buf,ax-25,ax-22,ay+2-playBeat%3,18);
+    rect(buf,ax+24,ay-3+playBeat%3,2,7,19);rect(buf,ax+21,ay+3+playBeat%3,4,2,19);
   }
   if(shine>0) {
     const r=18+shine;

@@ -15,7 +15,7 @@ function scene(mode,level,night,reduced=false){
  vm.runInNewContext(script,context);return context.qa;
 }
 let checks=0;
-for(const mode of ['idle','happy','wave','sleep','grow'])for(let level=1;level<=5;level++)for(const night of [false,true]){
+for(const mode of ['idle','happy','wave','sleep','grow','bubble','dance'])for(let level=1;level<=5;level++)for(const night of [false,true]){
  const s=scene(mode,level,night);let first;let changed=false;
  for(let tick=0;tick<=s.loop;tick++){
   s.update();s.render();const sprite=s.getSprite();
@@ -33,7 +33,7 @@ for(let tick=0;tick<240;tick++) {calm.update();calm.render();if(tick===0)baselin
 // Export generated sprite buffers for the React dialog sprite and static evolution previews.
 // PNG encoding is done by Pillow using these original index buffers (no screenshot manipulation).
 const frames={palette:scene('idle',1,false).palette,states:{}};
-for(const mode of ['idle','happy','wave','sleep','grow']){
+for(const mode of ['idle','happy','wave','sleep','grow','bubble','dance']){
  frames.states[mode]=[];
  for(let level=1;level<=5;level++){
   const s=scene(mode,level,false);const poses=[];

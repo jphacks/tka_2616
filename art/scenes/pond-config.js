@@ -2,7 +2,7 @@ const W = 160, H = 96;
 const FY = 86, POSE_STEP = 6;
 const DEFAULT_MODE = 'idle', DEFAULT_LEVEL = 1, DEFAULT_NIGHT = false;
 const options = new URLSearchParams(location.search);
-const MODE = ['idle','happy','wave','sleep','grow'].includes(options.get('mode')) ? options.get('mode') : DEFAULT_MODE;
+const MODE = ['idle','happy','wave','sleep','grow','bubble','dance'].includes(options.get('mode')) ? options.get('mode') : DEFAULT_MODE;
 const LEVEL = Math.max(1, Math.min(5, Number(options.get('level')) || DEFAULT_LEVEL));
 const NIGHT = options.has('night') ? options.get('night') === '1' : DEFAULT_NIGHT;
 // Ink, cream/sky, land, water, actor, blush, flowers, warm FX. 28 fixed colors.
@@ -26,8 +26,8 @@ const EASE_OUT = Uint8Array.of(0,0,1,0);
 const NP = 6;
 const REST = Float32Array.of(0,0,0,MODE==='sleep'?2:0,0,0);
 const TARGET = [REST,Float32Array.of(1,-1,0,MODE==='sleep'?2:0,0,0),
- Float32Array.of(MODE==='happy'?-7:MODE==='grow'?-4:MODE==='sleep'?1:-1,MODE==='happy'?1:0,MODE==='wave'?5:MODE==='happy'?3:0,MODE==='sleep'?2:MODE==='happy'||MODE==='grow'?1:0,MODE==='grow'?1:0,MODE==='wave'?1:0),REST];
+ Float32Array.of(MODE==='happy'?-7:MODE==='grow'?-4:MODE==='sleep'?1:-1,MODE==='happy'?1:0,MODE==='wave'?5:MODE==='happy'?3:0,MODE==='sleep'?2:MODE==='happy'||MODE==='grow'||MODE==='dance'||MODE==='bubble'?1:0,MODE==='grow'?1:0,MODE==='wave'?1:0),REST];
 // Stable row-table silhouette: 29px wide and 24px tall, shared across all forms.
 const BODY = Int8Array.of(-5,5,-8,8,-10,10,-11,11,-12,12,-13,13,-13,13,-14,14,-14,14,-14,14,-14,14,-14,14,-14,14,-14,14,-14,14,-13,13,-13,13,-12,12,-11,11,-10,10,-8,8,-6,6);
 let ax=80, ay=41, hand=0, face=0, blink=0, beat=0, shine=0;
-let sway=0, ambient=0;
+let sway=0, ambient=0, playBeat=0, playActive=0;

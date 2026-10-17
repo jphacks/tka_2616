@@ -1,7 +1,7 @@
 'use client';
 import type { Motion } from './PondScene';
 export const evolutionNames = ['あわのこ', 'めばえ', 'ふたば', 'はなかんむり', '池のまもりびと'];
-const motions: [Motion, string, string][] = [['idle','のんびり','01'],['happy','よろこぶ','02'],['wave','手をふる','03'],['sleep','すやすや','04'],['grow','成長する','05']];
+const motions: [Motion, string, string][] = [['idle','のんびり','01'],['happy','よろこぶ','02'],['wave','手をふる','03'],['sleep','すやすや','04'],['grow','成長する','05'],['bubble','泡あそび','06'],['dance','ダンス','07']];
 export default function DevelopmentPanel({ level, preview, motion, night, paused, onLevel, onMotion, onNight, onPause, onReplay, onReset }: {
  level: number; preview: boolean; motion: Motion; night: boolean; paused: boolean;
  onLevel: (level: number) => void; onMotion: (motion: Motion) => void; onNight: () => void; onPause: () => void; onReplay: () => void; onReset: () => void;
