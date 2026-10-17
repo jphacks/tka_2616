@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import { sceneInsets } from '@/lib/sceneViewport';
 export type Motion = 'idle' | 'happy' | 'wave' | 'sleep' | 'grow' | 'bubble' | 'dance';
 type Player = { tick: number; pause: () => void; play: () => void };
 const speech: Record<Motion, string> = {
@@ -24,12 +25,23 @@ export default function PondScene({ level, happy, onPet, motion = 'idle', night 
      const player = (frame.current?.contentWindow as (Window & { pixelAnims?: Player }) | null)?.pixelAnims;
      if (!player) return;
      // Let the initial pose render before freezing a newly loaded frame.
-     if (shouldPause && player.tick < 0) { request = requestAnimationFrame(sync); return; }
+     if (player.tick < 0) { request = requestAnimationFrame(sync); return; }
+     const canvas = frame.current?.contentDocument?.getElementById('view') as HTMLCanvasElement | null;
+     if (canvas && frame.current) {
+       canvas.style.clipPath = sceneInsets(canvas.width, canvas.height);
+       const doc = frame.current.contentDocument!;
+       doc.documentElement.style.background = night ? '#778ba9' : '#e0edf1';
+       doc.body.style.background = night ? '#778ba9' : '#e0edf1';
+       frame.current.style.opacity = '1';
+     }
      if (shouldPause) player.pause(); else player.play();
    }
    sync();
-   return () => cancelAnimationFrame(request);
- }, [paused, suspended, visible, foreground, loaded, src]);
+   const win = frame.current?.contentWindow;
+   const resized = () => { cancelAnimationFrame(request); request = requestAnimationFrame(sync); };
+   win?.addEventListener('resize', resized);
+   return () => { cancelAnimationFrame(request); win?.removeEventListener('resize', resized); };
+ }, [paused, suspended, visible, foreground, loaded, src, width, night]);
  useEffect(() => {
    if (!holder.current) return;
    const resize = new ResizeObserver(([entry]) => setWidth(Math.max(320, Math.floor(entry.contentRect.width / 160) * 160)));
@@ -41,8 +53,10 @@ export default function PondScene({ level, happy, onPet, motion = 'idle', night 
  }, []);
  return <div className={`pixel-pond ${night ? 'night' : ''}`} ref={holder}>
    <div className="pond-sky-label"><span className="pixel-sun"/>{night ? '月あかりの池' : 'ひだまりの池'}</div>
-   <iframe key={src} ref={frame} src={src} onLoad={() => setLoaded(v => v + 1)} title={`あわもんの池・進化${level}・${selected}`} tabIndex={-1} style={{ width, height: width * 96 / 160 }} />
+   <div className="scene-viewport">
+   <iframe key={src} ref={frame} src={src} onLoad={() => setLoaded(v => v + 1)} title={`あわもんの池・進化${level}・${selected}`} tabIndex={-1} style={{ width, height: width * 96 / 160, opacity: 0 }} />
    <button className="pet-touch" onClick={onPet} aria-label="あわもんをなでる" />
+   </div>
    <div className="pond-speech" aria-live="polite">{speech[selected]}</div>
  </div>;
 }
