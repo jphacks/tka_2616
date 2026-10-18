@@ -6,6 +6,7 @@ import AwamonSprite from '@/components/AwamonSprite';
 import { usePetSound } from '@/hooks/usePetSound';
 import EvolutionCelebration, { type Evolution } from '@/components/EvolutionCelebration';
 import PhotoAssessment, { type Analysis } from '@/components/PhotoAssessment';
+import TaskWaiting, { type WaitingKind } from '@/components/TaskWaiting';
 import CharacterPicker from '@/components/CharacterPicker';
 import { characters, characterIds, type CharacterId } from '@/lib/characters';
 
@@ -15,7 +16,13 @@ type Step = 'before' | 'wash' | 'after' | 'result' | 'reward' | null;
 const thresholds = [0, 30, 80, 150, 250];
 
 async function api<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`/api${path}`, { cache: 'no-store', ...options });
+  let response: Response;
+  try {
+    response = await fetch(`/api${path}`, { cache: 'no-store', ...options, signal: AbortSignal.timeout(45000) });
+  } catch (error) {
+    if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) throw new Error('通信に時間がかかっています。記録が保存済みの場合もあるので、いったん閉じて状態を確認してね。');
+    throw new Error('接続が途切れたみたい。通信を確認して、もう一度試してね。');
+  }
   if (!response.ok) {
     const error = await response.json().catch(() => null);
     throw new Error(typeof error?.detail === 'string' ? error.detail : 'うまく接続できませんでした。もう一度試してください。');
@@ -64,6 +71,7 @@ function Home({ character, onCharacter, sound }: { character: CharacterId; onCha
   const [preview, setPreview] = useState('');
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [waitingKind, setWaitingKind] = useState<WaitingKind>('save');
   const [error, setError] = useState('');
   const [happy, setHappy] = useState(false);
   const [previewLevel, setPreviewLevel] = useState<number | null>(null);
@@ -87,10 +95,10 @@ function Home({ character, onCharacter, sound }: { character: CharacterId; onCha
   useEffect(() => { if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') navigator.serviceWorker.register('/sw.js').catch(() => {}); }, []);
   useEffect(() => { content.current?.scrollTo({ top: 0 }); }, [tab]);
   function pet(cue: 'voice' | 'complete' = 'voice') { void sound.play(cue); setReplay(v => v + 1); setPaused(false); setHappy(true); if (timer.current) clearTimeout(timer.current); timer.current = setTimeout(() => setHappy(false), 4000); }
-  async function action(fn: () => Promise<void>) {
+  async function action(fn: () => Promise<void>, kind: WaitingKind = 'save') {
     if (lock.current) return;
     void sound.unlock();
-    lock.current = true; setBusy(true); setError('');
+    lock.current = true; setWaitingKind(kind); setBusy(true); setError('');
     try { await fn(); } catch (e) { setError(e instanceof Error ? e.message : 'もう一度試してください。'); }
     finally { lock.current = false; setBusy(false); }
   }
@@ -109,7 +117,7 @@ function Home({ character, onCharacter, sound }: { character: CharacterId; onCha
       setStep(result.completed_at ? 'reward' : step === 'before' ? 'wash' : 'result');
       if (result.completed_at) pet('complete');
       await refresh();
-    });
+    }, step === 'before' ? 'before' : 'after');
   }
   async function confirm() {
     await action(async () => {
@@ -157,17 +165,17 @@ function Home({ character, onCharacter, sound }: { character: CharacterId; onCha
     </div>
     <CharacterPicker selected={character} open={picker} onClose={()=>setPicker(false)} onSelect={id=>{setPicker(false);onCharacter(id);}}/>
     <dialog ref={dialog} onCancel={e => { e.preventDefault(); close(); }} className="flow-dialog"><div className="dialog-top"><span>{guide ? `${profile.name}との暮らし` : step === 'reward' ? 'おつかれさま！' : `${profile.name}と${profile.task}`}</span><button data-sound="close" onClick={close} disabled={busy} aria-label="閉じる">×</button></div>
-      {guide ? <div className="guide"><AwamonSprite character={character} level={level}/><h2>ひとつできたら、ちいさな幸せ。</h2><ol><li>作業をはじめる前の写真を撮る</li><li>{profile.action}</li><li>終わった後を撮って、完了を記録</li></ol><p>1回10{profile.unit}、キャラごとに1日3回まで。ごほうびがたまると景色や姿が育ちます。お休みしても減りません。</p><h3>音について</h3><p>効果音：Kenney / 効果音ラボ<br/>音声：VOICEVOX:ずんだもん</p><h3>写真について</h3><p>写真は縮小し、位置情報などを取り除きます。AI判定に同意した場合のみOpenAIに送信します。サーバーの写真は完了・取り消し時、または24時間経過後の定期処理（最大約1分後）に削除します。</p><p>OpenAIには保存を無効にして送信しますが、サービス側の保持がゼロになる保証はありません。写真は衛生状態を証明するものではありません。</p><p className="soft-note">現在は個人用ローカル試作です。キャラクターは仮デザイン。オフラインでは完了を保存できません。</p><p><a href="/design" style={{ textDecoration: "underline" }}>あわもんの初期デザイン4案を見る →</a></p></div> : <>
+      {busy ? <TaskWaiting character={character} level={level} kind={waitingKind} photo={preview}/> : guide ? <div className="guide"><AwamonSprite character={character} level={level}/><h2>ひとつできたら、ちいさな幸せ。</h2><ol><li>作業をはじめる前の写真を撮る</li><li>{profile.action}</li><li>終わった後を撮って、完了を記録</li></ol><p>1回10{profile.unit}、キャラごとに1日3回まで。ごほうびがたまると景色や姿が育ちます。お休みしても減りません。</p><h3>音について</h3><p>効果音：Kenney / 効果音ラボ<br/>音声：VOICEVOX:ずんだもん</p><h3>写真について</h3><p>写真は縮小し、位置情報などを取り除きます。AI判定に同意した場合のみOpenAIに送信します。サーバーの写真は完了・取り消し時、または24時間経過後の定期処理（最大約1分後）に削除します。</p><p>OpenAIには保存を無効にして送信しますが、サービス側の保持がゼロになる保証はありません。写真は衛生状態を証明するものではありません。</p><p className="soft-note">現在は個人用ローカル試作です。キャラクターは仮デザイン。オフラインでは完了を保存できません。</p><p><a href="/design" style={{ textDecoration: "underline" }}>あわもんの初期デザイン4案を見る →</a></p></div> : <>
       {step !== 'reward' && <div className="steps">{['撮る', 'やってみる', '記録する'].map((label, i) => <span key={label} className={(step === 'before' ? 0 : step === 'wash' ? 1 : 2) === i ? 'current' : ''}>{i + 1}<small>{label}</small></span>)}</div>}
       {(step === 'before' || step === 'after') && <div className="capture"><p className="eyebrow">{step === 'before' ? 'BEFORE' : 'AFTER'}</p><h2>{step === 'before' ? profile.beforeTitle : profile.afterTitle}</h2><p>{step === 'after' ? profile.afterHint : profile.beforeHint}</p><label className={`photo-picker ${preview ? 'has-photo' : ''}`}>
-      {preview ? <img src={preview} alt="選択した写真のプレビュー"/> : <><Icon name="camera"/><strong>カメラで撮影する</strong><span>JPEG / PNG / WebP</span></>}<input aria-label={`${profile.task}の写真`} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={busy} onChange={e => { const file = e.target.files?.[0]; if (file) { setPhoto(null); action(async () => setPhoto(await resize(file))); } e.target.value = ''; }}/></label>{preview && <p className="soft-note">写真をタップすると撮り直せます。</p>}
-      <label className="library-picker">保存済みの写真から選ぶ<input aria-label="保存済みの作業写真を選ぶ" type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={e => { const file = e.target.files?.[0]; if (file) { setPhoto(null); action(async () => setPhoto(await resize(file))); } e.target.value = ''; }}/></label>
+      {preview ? <img src={preview} alt="選択した写真のプレビュー"/> : <><Icon name="camera"/><strong>カメラで撮影する</strong><span>JPEG / PNG / WebP</span></>}<input aria-label={`${profile.task}の写真`} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" disabled={busy} onChange={e => { const file = e.target.files?.[0]; if (file) { setPhoto(null); action(async () => setPhoto(await resize(file)), 'prepare'); } e.target.value = ''; }}/></label>{preview && <p className="soft-note">写真をタップすると撮り直せます。</p>}
+      <label className="library-picker">保存済みの写真から選ぶ<input aria-label="保存済みの作業写真を選ぶ" type="file" accept="image/jpeg,image/png,image/webp" disabled={busy} onChange={e => { const file = e.target.files?.[0]; if (file) { setPhoto(null); action(async () => setPhoto(await resize(file)), 'prepare'); } e.target.value = ''; }}/></label>
       {step === 'before' && <>{game?.ai_enabled ? <label className="consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)}/>前後の写真をOpenAIに送り、AIで変化を確認する</label> : <p className="privacy">今は自己申告モード。写真を外部AIへ送りません。</p>}<p className="privacy">写真は完了時または24時間後に削除します。AIを使わなくても、同じごほうびがもらえます。</p></>}
       <button className="primary" data-sound="confirm" onClick={upload} disabled={!photo || busy}>{busy ? '写真を確認しています…' : step === 'before' ? 'この写真ではじめる' : 'この写真で記録する'}<Icon name="arrow"/></button></div>}
-      {step === 'wash' && <div className="wash-state"><AwamonSprite character={character} level={level}/><p className="eyebrow">TAKE YOUR TIME</p><h2>ゆっくりで、だいじょうぶ。</h2><p>{profile.name}も、ここで応援中。<br/>作業が終わったら教えてね。</p><div className="wash-tip">画面を閉じても、続きから再開できます。</div><button className="primary" onClick={() => { setPhoto(null); setStep('after'); }}>{profile.finish}<Icon name="camera"/></button><button className="text-button" disabled={busy} onClick={confirm}>写真を撮らず、自分で完了を記録</button><button className="text-button muted" disabled={busy} onClick={() => action(async () => { await api(`/sessions/${session!.id}`, { method: 'DELETE' }); await refresh(); close(); setStep(null); })}>今回はお休みする</button></div>}
+      {step === 'wash' && <div className="wash-state"><AwamonSprite character={character} level={level}/><p className="eyebrow">TAKE YOUR TIME</p><h2>ゆっくりで、だいじょうぶ。</h2><p>{profile.name}も、ここで応援中。<br/>作業が終わったら教えてね。</p><div className="wash-tip">画面を閉じても、続きから再開できます。</div><button className="primary" disabled={busy} onClick={() => { setPhoto(null); setStep('after'); }}>{profile.finish}<Icon name="camera"/></button><button className="text-button" disabled={busy} onClick={confirm}>写真を撮らず、自分で完了を記録</button><button className="text-button muted" disabled={busy} onClick={() => action(async () => { await api(`/sessions/${session!.id}`, { method: 'DELETE' }); await refresh(); close(); setStep(null); })}>今回はお休みする</button></div>}
       {step === 'result' && <div className="result"><AwamonSprite character={character} small level={level}/><h2>{profile.task}、おつかれさま。</h2><PhotoAssessment character={character} analysis={session?.analysis ?? null}/><button className="primary" data-sound="confirm" onClick={confirm} disabled={busy}>{busy ? '記録しています…' : profile.confirm}</button><button className="text-button" disabled={busy} onClick={() => { setPhoto(null); setStep('after'); }}>作業後の写真を撮り直す</button></div>}
       {step === 'reward' && <div className="reward"><div className="reward-sprite"><AwamonSprite character={character} happy={happy} level={level}/></div><p className="eyebrow">A LITTLE HAPPINESS!</p><h2>{profile.thanks}</h2><PhotoAssessment character={character} analysis={session?.analysis ?? null} method={session?.completion_method}/><div className="earned"><Icon name="drop"/><strong>+{session?.reward_amount || 0}</strong><span>{profile.unit}</span></div><p>{session?.reward_amount ? profile.reward : '今日のごほうびは3回分たまりました。今回のがんばりもノートに記録したよ。'}</p><button className="primary" onClick={close}>{profile.place}にもどる<Icon name="arrow"/></button></div>}
-      </>}{error && <p role="alert" className="error">{error}</p>}{busy && <p role="status" className="busy-note">少しだけ待ってね…</p>}
+      </>}{error && <p role="alert" className="error">{error}</p>}{error && !busy && step === 'after' && <button className="text-button" onClick={confirm}>写真での確認を待たず、自分で完了を記録</button>}
     </dialog>
     {evolution && <EvolutionCelebration character={character} evolution={evolution} onReveal={() => { void sound.play('fanfare'); }} onClose={() => { sound.stop(); setEvolution(null); }}/>}
   </div>;
