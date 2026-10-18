@@ -49,3 +49,7 @@ def animation(character, level, motions, name, scale):
 animation('awamon', 2, ['wave', 'idle', 'happy', 'idle'], 'awamon-hero.gif', 12)
 for character, motion in [('awamon','bubble'), ('ingredients','wave'), ('cooking','dance'), ('laundry','happy')]:
     animation(character, 1, ['idle', motion, 'idle'], f'{character}-small.gif', 6)
+
+# Five animated forms used by the user's revised evolution slide.
+for level in range(1, 6):
+    animation('awamon', level, ['happy', 'idle'], f'awamon-evolution-{level}.gif', 8)
