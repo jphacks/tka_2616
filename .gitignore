@@ -14,3 +14,6 @@ art/exports/frames.json
 art/exports/frames-*.json
 
 backend/models/
+
+# Locally installed third-party presentation skill (do not redistribute)
+tools/skills/pptx/
