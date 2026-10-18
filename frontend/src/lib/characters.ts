@@ -6,7 +6,7 @@ export const characters = {
   asset:'awamon', scene:'awamon-pond', description:'食器を洗って、水の妖精と池を育てよう。',
   worlds:['はじまりの水たまり','ちいさな池','みどりの池','花咲く池','なかまたちの池'],
   forms:['あわのこ','しずくうさぎ','みずのこりす','はすの妖精','池のまもりびと'],
-  beforeTitle:'洗う前を、パシャリ。', beforeHint:'食器全体が入るように、明るい場所で撮ろう。', afterTitle:'きれいになったら、もう1枚。', afterHint:'洗った食器が見えるように、なるべく同じ角度で。',
+  beforeTitle:'洗う前を、パシャリ。', beforeHint:'食器全体が入るように、明るい場所で撮ろう。', afterTitle:'きれいになったら、もう1枚。', afterHint:'洗い終わったあとの様子を撮ろう。',
   finish:'洗い終わった！ 写真を撮る', confirm:'洗いました！ 完了を記録', catchphrase:'洗うたび、池にしずく。', reward:'きみのひと洗いが、池のうるおいになりました。', thanks:'きれいにしてくれて、ありがとう。',
  },
  ingredients: {
