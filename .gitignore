@@ -12,3 +12,5 @@ backend/data/
 .codex/
 art/exports/frames.json
 art/exports/frames-*.json
+
+backend/models/

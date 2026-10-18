@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from PIL import Image, ImageOps, UnidentifiedImageError
-from . import vision
+from . import vision, detection
 from .tasks import Task
 
 load_dotenv()
@@ -206,3 +206,9 @@ def cancel(session_id: str):
             raise HTTPException(409, '完了済みの記録です。')
         db.execute("UPDATE sessions SET status='cancelled',before_image=NULL WHERE id=?", (session_id,))
     return {'ok': True}
+
+
+@app.post('/api/detections')
+async def detect_dishes(image: UploadFile = File(...)):
+    data = await photo(image)
+    return await asyncio.to_thread(detection.predict, data)

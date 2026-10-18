@@ -74,7 +74,7 @@ backend/.venv/bin/python art/prototype/build.py
 
 仕様の基準は [docs/DESIGN.md](docs/DESIGN.md)。実装との差分は末尾のv0.4〜v0.7追記に記載。元の `設計.md` は参照先案内に整理しています。
 
-未実施: キャラの人間による採用評価、実APIのモデル検証・90ペア評価、ブラウザー操作とスマホ実機での表示検証、認証・公開運用向け制限、YOLOE、実機でのPWA・カメラ・表示検証。モーションはidle/happy/wave/sleep/grow/bubble/danceを実装済みです。
+未実施: キャラの人間による採用評価、実APIのモデル検証・90ペア評価、ブラウザー操作とスマホ実機での表示検証、認証・公開運用向け制限、YOLOEの実際の食器写真での精度評価、実機でのPWA・カメラ・表示検証。モーションはidle/happy/wave/sleep/grow/bubble/danceを実装済みです。
 
 Gitの `main` ブランチで変更を管理しています。現時点ではローカルのみで、リモートリポジトリは未設定です。
 
@@ -83,3 +83,14 @@ Gitの `main` ブランチで変更を管理しています。現時点ではロ
 音を試すときは、実験室の上の「♪ 音 OFF」を押してONにしてください。「声をきく」や、キャラをなでる操作、進化プレビューで短い合成音が鳴ります。各キャラの進化は、耳・尾・翼・屋台など輪郭も変わる5段階になっています。
 
 操作音はKenney Interface Sounds、キャラの反応音は効果音ラボの提供素材を使用しています。短い声はVOICEVOX:ずんだもん（「おかえり」「やったね」）。音ONで利用でき、生成サーバーの常駐は不要です。出典と再生成方法は [音源一覧](frontend/public/audio/README.md) を参照してください。
+
+
+### あわもんの食器さがし（YOLOE）
+
+`./scripts/setup-detection.sh` でCPU用依存パッケージとモデルを用意し、`./scripts/dev.sh` を再起動してください。一度導入すると通常のsetupでも検出用依存を維持します。モデルは約27MB、PyTorch等の追加ダウンロードが必要です。モデル・設定は `backend/models/` に置きGit管理対象外です。
+
+あわもんの撮影プレビューで、YOLOEが食器の候補を枠と日本語名で表示します。初回はモデル読み込みが入り、以後はメモリ内のモデルを再利用します。推論はCPU・同時1件、混雑・失敗・30秒の待機超過時も撮影フローを続けられます。`YOLOE_ENABLED=0` で無効化できます。
+
+`POST /api/detections` は画像を縮小・EXIF除去してこのサーバー内で処理し、写真も検出結果も保存しません。OpenAIへの送信や完了報酬の付与は行いません。洗えたかの判定は既存のGPTによる前後比較（同意時）、または自己申告のままです。
+
+使用モデル: [Ultralytics YOLOE11s-seg-pf](https://docs.ultralytics.com/models/yoloe/)。4585クラスのprompt-free検出から食器だけを抽出。パッケージ・モデルの利用条件は[Ultralyticsのライセンス](https://www.ultralytics.com/license)を参照。
