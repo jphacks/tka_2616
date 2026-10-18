@@ -162,3 +162,5 @@ http://127.0.0.1:3000 を開きます。**APIキーなしでも、前写真を�
 - [設計](docs/DESIGN.md) ／ [仲間の仕様](docs/COMPANIONS.md) ／ [ピクセルアート制作](docs/PIXEL_DESIGN.md)
 - [音源の出典・利用条件](frontend/public/audio/README.md)
 - YOLOEの利用条件は [Ultralyticsのライセンス](https://www.ultralytics.com/license) を参照。外部の音源・モデル等の権利はそれぞれの提供元に帰属します。
+
+コードのライセンスは提出先に付属する [LICENSE](LICENSE) を参照してください。外部素材・モデルの利用条件はこのライセンスで置き換わりません。
