@@ -10,7 +10,7 @@
 
 ### デモ動画・作品情報
 
-**デモ動画：URL準備中（提出前に追加が必要です）。**
+**デモ動画：URL準備中。**
 
 - [発表スライド（PDF・4枚）](deliverables/pitch/kurashimon-90sec-revised.pdf) ／ [アニメーション入りPowerPoint](deliverables/pitch/kurashimon-90sec-revised.pptx)
 - [ローカルで試す](#動かしてみる) ／ [実装・検証状況](#verification) ／ [独自機能とコード](#独自技術)
