@@ -1,104 +1,94 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CharacterId } from '@/lib/characters';
 
-type Cue = 'fanfare' | 'voice' | 'complete' | 'grow' | 'bubble' | 'sleep' | 'dance';
-const voices: Record<CharacterId, { pitch: number; wave: OscillatorType }> = {
- dishes: { pitch: 660, wave: 'sine' }, ingredients: { pitch: 780, wave: 'triangle' },
- cooking: { pitch: 440, wave: 'sine' }, laundry: { pitch: 880, wave: 'sine' },
+type Lane = 'ui' | 'pet' | 'speech';
+type Cue = 'voice' | 'complete' | 'grow' | 'fanfare' | 'bubble' | 'sleep' | 'dance' | 'wave' | 'welcome' | 'cheer' | 'tap' | 'select' | 'open' | 'close' | 'confirm';
+const sounds: Record<Cue, { file: string; lane: Lane; volume: number }> = {
+ tap: { file: 'ui/tap', lane: 'ui', volume: .55 }, select: { file: 'ui/select', lane: 'ui', volume: .55 },
+ open: { file: 'ui/open', lane: 'ui', volume: .5 }, close: { file: 'ui/close', lane: 'ui', volume: .5 }, confirm: { file: 'ui/confirm', lane: 'ui', volume: .5 },
+ voice: { file: 'pet/pet', lane: 'pet', volume: .65 }, bubble: { file: 'pet/pet', lane: 'pet', volume: .65 },
+ wave: { file: 'pet/wave', lane: 'pet', volume: .65 }, dance: { file: 'pet/dance', lane: 'pet', volume: .55 }, sleep: { file: 'pet/sleep', lane: 'pet', volume: .55 },
+ complete: { file: 'pet/complete', lane: 'pet', volume: .65 }, grow: { file: 'pet/evolution', lane: 'pet', volume: .65 }, fanfare: { file: 'pet/evolution', lane: 'pet', volume: .65 },
+ welcome: { file: 'voice/welcome', lane: 'speech', volume: .8 }, cheer: { file: 'voice/cheer', lane: 'speech', volume: .8 },
 };
-// Small syllable-like pitch bends; no recorded voices, downloads or external service.
-export function usePetSound(character: CharacterId) {
+export function usePetSound() {
  const [enabled, setEnabled] = useState(false);
  const [unavailable, setUnavailable] = useState(false);
- const active = useRef(false);
+ const active = useRef(false), greeted = useRef(false);
  const context = useRef<AudioContext | null>(null);
- const nodes = useRef(new Set<OscillatorNode | AudioBufferSourceNode>());
- const sample = useRef<Promise<AudioBuffer> | null>(null);
- const last = useRef(-Infinity);
- const generation = useRef(0);
- const stop = useCallback(() => {
-  generation.current++;
-  for (const node of nodes.current) { try { node.stop(); } catch {} }
-  nodes.current.clear();
+ const buffers = useRef(new Map<string, Promise<AudioBuffer>>());
+ const nodes = useRef<Record<Lane, Set<AudioBufferSourceNode>>>({ ui: new Set(), pet: new Set(), speech: new Set() });
+ const requests = useRef<Record<Lane, number>>({ ui: 0, pet: 0, speech: 0 });
+ const last = useRef<Record<Lane, number>>({ ui: -Infinity, pet: -Infinity, speech: -Infinity });
+ const stopLane = useCallback((lane: Lane) => {
+  requests.current[lane]++;
+  for (const source of nodes.current[lane]) { try { source.stop(); } catch {} }
+  nodes.current[lane].clear();
  }, []);
+ const stop = useCallback(() => { stopLane('ui'); stopLane('pet'); stopLane('speech'); }, [stopLane]);
  useEffect(() => {
   try { active.current = localStorage.getItem('kurashimon-sound') === 'on'; setEnabled(active.current); } catch {}
   const hide = () => { if (document.hidden) { stop(); void context.current?.suspend().catch(() => {}); } };
   document.addEventListener('visibilitychange', hide);
-  return () => { active.current = false; stop(); document.removeEventListener('visibilitychange', hide); void context.current?.close().catch(() => {}); context.current = null; };
+  return () => { active.current = false; stop(); document.removeEventListener('visibilitychange', hide); void context.current?.close().catch(() => {}); context.current = null; buffers.current.clear(); };
  }, [stop]);
- const loadFanfare = useCallback((ctx: AudioContext) => {
-  if (!sample.current) sample.current = fetch('/audio/evolution.mp3')
-   .then(response => { if (!response.ok) throw new Error('Audio unavailable'); return response.arrayBuffer(); })
-   .then(bytes => ctx.decodeAudioData(bytes))
-   .catch(error => { sample.current = null; throw error; });
-  return sample.current;
+ const getContext = useCallback(() => {
+  const Audio = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!Audio) throw new Error('Audio unavailable');
+  return context.current ?? (context.current = new Audio());
+ }, []);
+ const load = useCallback((ctx: AudioContext, file: string) => {
+  let pending = buffers.current.get(file);
+  if (!pending) {
+   pending = fetch(`/audio/${file}.mp3`).then(response => {
+    if (!response.ok) throw new Error('Sound unavailable'); return response.arrayBuffer();
+   }).then(bytes => ctx.decodeAudioData(bytes)).catch(error => { buffers.current.delete(file); throw error; });
+   buffers.current.set(file, pending);
+  }
+  return pending;
  }, []);
  const play = useCallback(async (cue: Cue = 'voice') => {
   if (!active.current || document.hidden) return;
-  const now = performance.now();
-  if (now - last.current < 100) return;
-  last.current = now;
-  const token = generation.current;
+  const spec = sounds[cue], lane = spec.lane, now = performance.now();
+  if (now - last.current[lane] < 90) return;
+  last.current[lane] = now;
+  stopLane(lane); // Invalidate older downloads immediately, not only after decoding.
+  const token = requests.current[lane];
+  const withCheer = cue === 'complete' || cue === 'fanfare';
+  if (withCheer) stopLane('speech');
+  const speechToken = requests.current.speech;
   try {
-   const Audio = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-   if (!Audio) { setUnavailable(true); return; }
-   const ctx = context.current ?? (context.current = new Audio());
+   const ctx = getContext();
    if (ctx.state !== 'running') await ctx.resume();
-   if (!active.current || document.hidden || token !== generation.current || ctx.state !== 'running') return;
-   if (cue === 'fanfare') {
-    let buffer: AudioBuffer | null = null;
-    try { buffer = await loadFanfare(ctx); } catch { /* Keep the synthesized cue as an offline fallback. */ }
-    if (!active.current || document.hidden || token !== generation.current || ctx.state !== 'running') return;
-    if (buffer) {
-     stop();
-     const source = ctx.createBufferSource(), gain = ctx.createGain();
-     source.buffer = buffer; gain.gain.setValueAtTime(.45, ctx.currentTime);
-     source.connect(gain); gain.connect(ctx.destination); nodes.current.add(source);
-     source.onended = () => { nodes.current.delete(source); source.disconnect(); gain.disconnect(); };
-     source.start(); setUnavailable(false); return;
-    }
-   }
-   stop();
-   const voice = voices[character];
-   const notes = cue === 'grow' || cue === 'fanfare' ? [1, 1.25, 1.5, 2, 2.5] : cue === 'complete' ? [1, 1.25, 1.5, 2] : cue === 'dance' ? [1, 1.5, 1.25, 1.5] : cue === 'sleep' ? [1, .8] : cue === 'bubble' ? [.8, 1.3, 1.8] : [1, 1.35, 1.15];
-   const length = cue === 'sleep' ? .2 : .11;
-   for (let i = 0; i < notes.length; i++) {
-    const osc = ctx.createOscillator(), gain = ctx.createGain();
-    const start = ctx.currentTime + .01 + i * (length + .035), end = start + length;
-    const pitch = voice.pitch * notes[i] * (cue === 'sleep' ? .65 : 1);
-    osc.type = voice.wave;
-    osc.frequency.setValueAtTime(pitch * .85, start);
-    osc.frequency.exponentialRampToValueAtTime(pitch * 1.08, start + length * .4);
-    osc.frequency.exponentialRampToValueAtTime(pitch * .92, end);
-    gain.gain.setValueAtTime(0, start);
-    gain.gain.linearRampToValueAtTime(.055, start + .012);
-    gain.gain.exponentialRampToValueAtTime(.001, end);
-    gain.gain.linearRampToValueAtTime(0, end + .01);
-    osc.connect(gain); gain.connect(ctx.destination); nodes.current.add(osc);
-    osc.onended = () => { nodes.current.delete(osc); osc.disconnect(); gain.disconnect(); };
-    osc.start(start); osc.stop(end + .02);
-   }
+   const [buffer, cheer] = await Promise.all([load(ctx, spec.file), withCheer ? load(ctx, sounds.cheer.file).catch(() => null) : Promise.resolve(null)]);
+   if (!active.current || document.hidden || token !== requests.current[lane] || ctx.state !== 'running') return;
+   const schedule = (data: AudioBuffer, destination: Lane, volume: number, when: number) => {
+    const source = ctx.createBufferSource(), gain = ctx.createGain();
+    source.buffer = data; gain.gain.setValueAtTime(volume, when);
+    source.connect(gain); gain.connect(ctx.destination); nodes.current[destination].add(source);
+    source.onended = () => { nodes.current[destination].delete(source); source.disconnect(); gain.disconnect(); };
+    source.start(when);
+   };
+   schedule(buffer, lane, spec.volume, ctx.currentTime + .01);
+   if (cheer && speechToken === requests.current.speech) schedule(cheer, 'speech', sounds.cheer.volume, ctx.currentTime + buffer.duration + .12);
    setUnavailable(false);
-  } catch { setUnavailable(true); }
- }, [character, stop, loadFanfare]);
- // Call at the start of a user gesture, before photo uploads await network I/O.
- // This keeps later completion sounds eligible for mobile autoplay policies.
+  } catch { if (active.current && token === requests.current[lane]) setUnavailable(true); }
+ }, [getContext, load, stopLane]);
  const unlock = useCallback(async () => {
   if (!active.current || document.hidden) return;
   try {
-   const Audio = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-   if (!Audio) { setUnavailable(true); return; }
-   const ctx = context.current ?? (context.current = new Audio());
-   if (ctx.state !== 'running') await ctx.resume();
-   void loadFanfare(ctx).catch(() => {});
+   const ctx = getContext(); if (ctx.state !== 'running') await ctx.resume();
+   for (const file of ['ui/tap', 'pet/pet', 'pet/complete', 'pet/evolution', 'voice/welcome', 'voice/cheer']) void load(ctx, file).catch(() => {});
   } catch { setUnavailable(true); }
- }, [loadFanfare]);
+ }, [getContext, load]);
+ const greet = useCallback(() => {
+  if (!active.current || greeted.current || document.hidden) return;
+  greeted.current = true; void play('welcome');
+ }, [play]);
  function toggle() {
-  const next = !active.current; active.current = next; setEnabled(next);
-  try { localStorage.setItem('kurashimon-sound', next ? 'on' : 'off'); } catch {}
-  if (next) void play('voice'); else stop();
+  active.current = !active.current; setEnabled(active.current);
+  try { localStorage.setItem('kurashimon-sound', active.current ? 'on' : 'off'); } catch {}
+  if (active.current) { void unlock(); greet(); } else stop();
  }
- return { enabled, unavailable, toggle, play, unlock, stop };
+ return { enabled, unavailable, toggle, play, unlock, stop, greet };
 }

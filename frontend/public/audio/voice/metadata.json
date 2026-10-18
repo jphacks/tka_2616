@@ -1,0 +1,127 @@
+{
+  "engine_version": "0.25.2",
+  "credit": "VOICEVOX:ずんだもん",
+  "speaker_uuid": "388f246b-8c41-4ac1-8e2d-5d79f3ff56d9",
+  "style": {
+    "name": "ノーマル",
+    "id": 3,
+    "type": "talk"
+  },
+  "phrases": {
+    "welcome": {
+      "text": "おかえり。",
+      "query": {
+        "accent_phrases": [
+          {
+            "moras": [
+              {
+                "text": "オ",
+                "consonant": null,
+                "consonant_length": null,
+                "vowel": "o",
+                "vowel_length": 0.141165092587471,
+                "pitch": 5.576724529266357
+              },
+              {
+                "text": "カ",
+                "consonant": "k",
+                "consonant_length": 0.06953051686286926,
+                "vowel": "a",
+                "vowel_length": 0.1416105329990387,
+                "pitch": 5.827752590179443
+              },
+              {
+                "text": "エ",
+                "consonant": null,
+                "consonant_length": null,
+                "vowel": "e",
+                "vowel_length": 0.15656928718090057,
+                "pitch": 5.9338154792785645
+              },
+              {
+                "text": "リ",
+                "consonant": "r",
+                "consonant_length": 0.03969494253396988,
+                "vowel": "i",
+                "vowel_length": 0.1720680296421051,
+                "pitch": 5.92751932144165
+              }
+            ],
+            "accent": 4,
+            "pause_mora": null,
+            "is_interrogative": false
+          }
+        ],
+        "speedScale": 1.05,
+        "pitchScale": 0.0,
+        "intonationScale": 1.15,
+        "volumeScale": 1.0,
+        "prePhonemeLength": 0.08,
+        "postPhonemeLength": 0.12,
+        "pauseLength": null,
+        "pauseLengthScale": 1.0,
+        "outputSamplingRate": 24000,
+        "outputStereo": false,
+        "kana": "オカエリ'"
+      }
+    },
+    "cheer": {
+      "text": "やったね！",
+      "query": {
+        "accent_phrases": [
+          {
+            "moras": [
+              {
+                "text": "ヤ",
+                "consonant": "y",
+                "consonant_length": 0.07160169631242752,
+                "vowel": "a",
+                "vowel_length": 0.13914598524570465,
+                "pitch": 5.767516136169434
+              },
+              {
+                "text": "ッ",
+                "consonant": null,
+                "consonant_length": null,
+                "vowel": "cl",
+                "vowel_length": 0.06566663086414337,
+                "pitch": 0.0
+              },
+              {
+                "text": "タ",
+                "consonant": "t",
+                "consonant_length": 0.07004190981388092,
+                "vowel": "a",
+                "vowel_length": 0.11006060987710953,
+                "pitch": 5.992218971252441
+              },
+              {
+                "text": "ネ",
+                "consonant": "n",
+                "consonant_length": 0.061610929667949677,
+                "vowel": "e",
+                "vowel_length": 0.20544056594371796,
+                "pitch": 5.813985347747803
+              }
+            ],
+            "accent": 1,
+            "pause_mora": null,
+            "is_interrogative": false
+          }
+        ],
+        "speedScale": 1.05,
+        "pitchScale": 0.0,
+        "intonationScale": 1.15,
+        "volumeScale": 1.0,
+        "prePhonemeLength": 0.08,
+        "postPhonemeLength": 0.12,
+        "pauseLength": null,
+        "pauseLengthScale": 1.0,
+        "outputSamplingRate": 24000,
+        "outputStereo": false,
+        "kana": "ヤ'ッタネ"
+      }
+    }
+  },
+  "engine_image": "voicevox/voicevox_engine@sha256:eb8c7f46a7d01217d1ff2b6f018261faedeceded3cc756b4fbbf371791ad6c90"
+}

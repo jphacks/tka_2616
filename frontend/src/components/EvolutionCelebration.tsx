@@ -20,7 +20,7 @@ export default function EvolutionCelebration({ character, evolution, onReveal, o
   const timer = window.setTimeout(() => { setReady(true); reveal.current(); }, reduced ? 0 : 1500);
   return () => { clearTimeout(timer); element?.close(); focus?.focus(); };
  }, []);
- return <dialog ref={dialog} className={`evolution-celebration ${ready ? 'revealed' : 'charging'}`} aria-labelledby="evolution-title" onCancel={event => { event.preventDefault(); onClose(); }}>
+ return <dialog ref={dialog} data-sound="none" className={`evolution-celebration ${ready ? 'revealed' : 'charging'}`} aria-labelledby="evolution-title" onCancel={event => { event.preventDefault(); onClose(); }}>
   <div className="evolution-content">
    <div className="evolution-top"><span>{evolution.preview ? 'おためし進化 · 記録は変わりません' : 'きみの「できた！」が、ちからになった'}</span><button type="button" onClick={onClose} aria-label="進化演出を閉じる">×</button></div>
    <div className="evolution-heading" aria-live="polite"><p>{ready ? 'NEW EVOLUTION!' : 'SOMETHING WONDERFUL…'}</p><h2 id="evolution-title">{ready ? 'わあ、進化した！' : 'おや…？ ようすが…！'}</h2></div>
