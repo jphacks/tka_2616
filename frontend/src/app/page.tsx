@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import PondScene, { type Motion } from '@/components/PondScene';
 import DevelopmentPanel from '@/components/DevelopmentPanel';
 import AwamonSprite from '@/components/AwamonSprite';
+import { usePetBehavior } from '@/hooks/usePetBehavior';
 import { usePetSound } from '@/hooks/usePetSound';
 import EvolutionCelebration, { type Evolution } from '@/components/EvolutionCelebration';
 import PhotoAssessment, { type Analysis } from '@/components/PhotoAssessment';
@@ -74,28 +75,30 @@ function Home({ character, onCharacter, sound }: { character: CharacterId; onCha
   const [busy, setBusy] = useState(false);
   const [waitingKind, setWaitingKind] = useState<WaitingKind>('save');
   const [error, setError] = useState('');
-  const [happy, setHappy] = useState(false);
   const [previewLevel, setPreviewLevel] = useState<number | null>(null);
-  const [motion, setMotion] = useState<Motion>('idle');
-  const [night, setNight] = useState(false);
+  const [manualMotion, setManualMotion] = useState<Motion | null>(null);
+  const [manualNight, setManualNight] = useState<boolean | null>(null);
   const [paused, setPaused] = useState(false);
   const [replay, setReplay] = useState(0);
   const previousLevel = useRef<number | null>(null);
   const [guide, setGuide] = useState(false);
   const lock = useRef(false);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const behavior = usePetBehavior(tab === 'pond' && (!step || step === 'reward') && !guide && !picker && !evolution && !paused && manualMotion === null && manualNight === null && previewLevel === null);
+  const motion = manualMotion ?? behavior.motion;
+  const night = manualNight ?? behavior.night;
+  const happy = motion === 'happy';
   const dialog = useRef<HTMLDialogElement>(null);
   const content = useRef<HTMLElement>(null);
   const refresh = useCallback(async () => {
     const [g, h] = await Promise.all([api<Game>(`/game-state?task=${character}`), api<Session[]>(`/sessions?task=${character}`)]);
     setGame(g); setHistory(h); return g;
   }, [character]);
-  useEffect(() => { refresh().catch(e => setError(e.message)); return () => { if (timer.current) clearTimeout(timer.current); }; }, [refresh]);
+  useEffect(() => { refresh().catch(e => setError(e.message)); }, [refresh]);
   useEffect(() => { if (!photo) { setPreview(''); return; } const url = URL.createObjectURL(photo); setPreview(url); return () => URL.revokeObjectURL(url); }, [photo]);
   useEffect(() => { if ((step || guide) && !evolution) dialog.current?.showModal(); else dialog.current?.close(); }, [step, guide, evolution]);
   useEffect(() => { if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') navigator.serviceWorker.register('/sw.js').catch(() => {}); }, []);
   useEffect(() => { content.current?.scrollTo({ top: 0 }); }, [tab]);
-  function pet(cue: 'voice' | 'complete' = 'voice') { void sound.play(cue); setReplay(v => v + 1); setPaused(false); setHappy(true); if (timer.current) clearTimeout(timer.current); timer.current = setTimeout(() => setHappy(false), 4000); }
+  function pet(cue: 'voice' | 'complete' = 'voice') { void sound.play(cue); setReplay(v => v + 1); setPaused(false); setManualMotion(null); behavior.play(cue === 'complete' && Math.random() < .5 ? 'dance' : 'happy'); }
   async function action(fn: () => Promise<void>, kind: WaitingKind = 'save') {
     if (lock.current) return;
     void sound.unlock();
@@ -131,12 +134,12 @@ function Home({ character, onCharacter, sound }: { character: CharacterId; onCha
   const displayLevel = previewLevel ?? level;
   useEffect(() => {
     if (!game) return;
-    if (previousLevel.current !== null && game.pond_level > previousLevel.current) { setEvolution({ from: previousLevel.current, to: game.pond_level, preview: false }); setMotion('grow'); setReplay(v => v + 1); }
+    if (previousLevel.current !== null && game.pond_level > previousLevel.current) { setEvolution({ from: previousLevel.current, to: game.pond_level, preview: false }); setReplay(v => v + 1); }
     previousLevel.current = game.pond_level;
   }, [game]);
-  function chooseMotion(next: Motion) { if (next !== 'idle') void sound.play(next === 'grow' || next === 'bubble' || next === 'sleep' || next === 'dance' || next === 'wave' ? next : 'voice'); if (timer.current) clearTimeout(timer.current); setHappy(false); setMotion(next); setPaused(false); setReplay(v => v + 1); }
+  function chooseMotion(next: Motion) { if (next !== 'idle') void sound.play(next === 'grow' || next === 'bubble' || next === 'sleep' || next === 'dance' || next === 'wave' ? next : 'voice'); setManualMotion(next); setPaused(false); setReplay(v => v + 1); }
   function chooseLevel(next: number) { setPreviewLevel(next); chooseMotion('grow'); }
-  function resetPreview() { setPreviewLevel(null); setNight(false); setPaused(false); chooseMotion('idle'); }
+  function resetPreview() { setPreviewLevel(null); setManualNight(null); setManualMotion(null); setPaused(false); behavior.reset(); }
   const total = game?.total_drops || 0;
   const progress = game?.next_level_at ? (total - thresholds[level - 1]) / (game.next_level_at - thresholds[level - 1]) * 100 : game ? 100 : 0;
   return <div className="app-shell" data-character={character} onClickCapture={event => {
@@ -158,7 +161,7 @@ function Home({ character, onCharacter, sound }: { character: CharacterId; onCha
           <section className="growth-card"><div className="card-label"><Icon name="leaf"/><span>{profile.place}の成長</span></div><h2>{level < 5 ? '次の景色まで、あと少し。' : 'にぎやかになったね。'}</h2><div className="growth-destination"><div className="plant-art" aria-hidden="true">{level < 3 ? '♧' : '✿'}</div><div><small>{level < 5 ? `NEXT · LEVEL ${level + 1}` : 'LEVEL 5 · COMPLETE'}</small><strong>{names[Math.min(level, 4)]}</strong></div></div><div className="progress-label"><span>{level < 5 ? `あと ${(game?.next_level_at || 30) - total} ${profile.unit}` : 'これからも、いっしょに。'}</span><span>{total} / {game?.next_level_at || 250}</span></div><div className="progress" role="progressbar" aria-label="次の景色までの成長" aria-valuenow={Math.round(progress)} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${progress}%` }}/></div><p className="soft-note">お休みしても、成長はそのまま。<br/>少しずつ、いっしょに育とう。</p></section></div>
           <div className="sound-settings" data-sound="none"><button type="button" aria-pressed={sound.enabled} onClick={sound.toggle}>♪ 音 {sound.enabled ? 'ON' : 'OFF'}</button><span>{sound.unavailable ? '音を読み込めませんでした。もう一度試してください' : '操作音・キャラの効果音・短い声'}</span><button type="button" disabled={!sound.enabled} onClick={() => { void sound.play('welcome'); }}>おかえりをきく</button></div>
           <button className="evolution-demo" onClick={() => { void sound.unlock(); setEvolution({ from: Math.min(displayLevel, 4), to: Math.min(displayLevel + 1, 5), preview: true }); }}>✦ 大進化デモを見る</button>
-          <DevelopmentPanel character={character} level={displayLevel} preview={previewLevel !== null || motion !== 'idle' || night} motion={happy ? 'happy' : motion} night={night} paused={paused} onLevel={chooseLevel} onMotion={chooseMotion} onNight={() => setNight(v => !v)} onPause={() => setPaused(v => !v)} onReplay={() => { setPaused(false); setReplay(v => v + 1); }} onReset={resetPreview}/>
+          <DevelopmentPanel character={character} level={displayLevel} preview={previewLevel !== null || manualMotion !== null || manualNight !== null || paused} motion={happy ? 'happy' : motion} night={night} paused={paused} onLevel={chooseLevel} onMotion={chooseMotion} onNight={() => setManualNight(!night)} onPause={() => setPaused(v => !v)} onReplay={() => { setPaused(false); setReplay(v => v + 1); }} onReset={resetPreview}/>
           <section className="memory-strip"><span className="memory-icon"><Icon name="book"/></span><div><h3>{history.length ? 'またひとつ、できたね。' : '最初のおもいでは、これから。'}</h3><p>{history.length ? `これまで ${game?.completed_count} 回の${profile.task}を記録しました。` : '作業を終えると、ここに日々の足あとが残ります。'}</p></div><button data-sound="open" aria-label="おもいでノートを開く" onClick={() => setTab('journal')}>→</button></section>
         </> : <section className="journal">{history.length ? history.map(s => <article key={s.id}><span className="journal-icon"><Icon name="drop"/></span><div><time>{new Date(s.completed_at!).toLocaleString('ja-JP', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time><h3>{profile.completed}</h3><p>{s.completion_method === 'ai' ? '写真の変化から記録' : '自分で完了を記録'}</p></div><strong>+{s.reward_amount}<small>{profile.unit}</small></strong></article>) : <div className="empty"><AwamonSprite character={character} level={level}/><h2>最初の1ページを、いっしょに。</h2><p>{profile.task}の記録がここに並びます。</p><button className="primary" disabled={!game} onClick={begin}>{profile.action}</button></div>}</section>}
         <footer className="footer"><span>ひとつの「できた」が、世界を育てる。</span><span>{profile.name} <Icon name="drop"/></span></footer>
@@ -175,9 +178,9 @@ function Home({ character, onCharacter, sound }: { character: CharacterId; onCha
       <button className="primary" data-sound="confirm" onClick={upload} disabled={!photo || busy}>{busy ? '写真を確認しています…' : step === 'before' ? 'この写真ではじめる' : 'この写真で記録する'}<Icon name="arrow"/></button></div>}
       {step === 'wash' && <div className="wash-state"><AwamonSprite character={character} level={level}/><p className="eyebrow">TAKE YOUR TIME</p><h2>ゆっくりで、だいじょうぶ。</h2><p>{profile.name}も、ここで応援中。<br/>作業が終わったら教えてね。</p><div className="wash-tip">画面を閉じても、続きから再開できます。</div><button className="primary" disabled={busy} onClick={() => { setPhoto(null); setStep('after'); }}>{profile.finish}<Icon name="camera"/></button><button className="text-button" disabled={busy} onClick={confirm}>写真を撮らず、自分で完了を記録</button><button className="text-button muted" disabled={busy} onClick={() => action(async () => { await api(`/sessions/${session!.id}`, { method: 'DELETE' }); await refresh(); close(); setStep(null); })}>今回はお休みする</button></div>}
       {step === 'result' && <div className="result"><AwamonSprite character={character} small level={level}/><h2>{profile.task}、おつかれさま。</h2><PhotoAssessment character={character} analysis={session?.analysis ?? null}/><button className="primary" data-sound="confirm" onClick={confirm} disabled={busy}>{busy ? '記録しています…' : profile.confirm}</button><button className="text-button" disabled={busy} onClick={() => { setPhoto(null); setStep('after'); }}>作業後の写真を撮り直す</button></div>}
-      {step === 'reward' && <div className="reward"><div className="reward-sprite"><AwamonSprite character={character} happy={happy} level={level}/></div><p className="eyebrow">A LITTLE HAPPINESS!</p><h2>{profile.thanks}</h2><PhotoAssessment character={character} analysis={session?.analysis ?? null} method={session?.completion_method}/><div className="earned"><Icon name="drop"/><strong>+{session?.reward_amount || 0}</strong><span>{profile.unit}</span></div><p>{session?.reward_amount ? profile.reward : '今日のごほうびは3回分たまりました。今回のがんばりもノートに記録したよ。'}</p><button className="primary" onClick={close}>{profile.place}にもどる<Icon name="arrow"/></button></div>}
+      {step === 'reward' && <div className="reward"><div className="reward-sprite"><AwamonSprite character={character} motion={motion} level={level}/></div><p className="eyebrow">A LITTLE HAPPINESS!</p><h2>{profile.thanks}</h2><PhotoAssessment character={character} analysis={session?.analysis ?? null} method={session?.completion_method}/><div className="earned"><Icon name="drop"/><strong>+{session?.reward_amount || 0}</strong><span>{profile.unit}</span></div><p>{session?.reward_amount ? profile.reward : '今日のごほうびは3回分たまりました。今回のがんばりもノートに記録したよ。'}</p><button className="primary" onClick={close}>{profile.place}にもどる<Icon name="arrow"/></button></div>}
       </>}{error && <p role="alert" className="error">{error}</p>}{error && !busy && step === 'after' && <button className="text-button" onClick={confirm}>写真での確認を待たず、自分で完了を記録</button>}
     </dialog>
-    {evolution && <EvolutionCelebration character={character} evolution={evolution} onReveal={() => { void sound.play('fanfare'); }} onClose={() => { sound.stop(); setEvolution(null); }}/>}
+    {evolution && <EvolutionCelebration character={character} evolution={evolution} onReveal={() => { void sound.play('fanfare'); }} onClose={() => { sound.stop(); if (!evolution.preview) { setManualMotion(null); behavior.play('grow'); } setEvolution(null); }}/>}
   </div>;
 }
